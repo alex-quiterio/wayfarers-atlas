@@ -10,7 +10,7 @@
   --shadow: rgba(60, 38, 14, 0.35);
   --font-display: "Cinzel", "Trajan Pro", Georgia, serif;
   --font-body: "IM Fell English", "Iowan Old Style", Georgia, serif;
-  --topbar-h: 56px;
+  --topbar-h: calc(56px + env(safe-area-inset-top, 0px));
   --panel-w: 420px;
 }
 

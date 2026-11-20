@@ -4,6 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Atlas</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#8c2f2b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Atlas" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="icons/icon-192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -26,6 +34,7 @@
         <input id="search" type="search" placeholder="Search notes, people, lands…" autocomplete="off" />
         <ul id="results" class="search__results" hidden></ul>
       </div>
+      <button id="install" class="seal-btn" type="button" hidden aria-label="Install as an app" title="Install as an app">⤓</button>
     </header>
 
     <div id="tooltip" class="tooltip" hidden></div>

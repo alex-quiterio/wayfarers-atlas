@@ -8,7 +8,7 @@
   align-items: center;
   gap: 12px;
   height: var(--topbar-h);
-  padding: 0 16px;
+  padding: env(safe-area-inset-top, 0px) 16px 0;
   pointer-events: none;
 }
 
@@ -63,7 +63,7 @@ body.panel-open .zoom {
 @media (max-width: 760px) {
   .topbar {
     gap: 8px;
-    padding: 0 10px;
+    padding: env(safe-area-inset-top, 0px) 10px 0;
   }
 
   .topbar__title {

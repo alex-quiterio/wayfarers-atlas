@@ -387,3 +387,12 @@ button.chip:hover {
     padding: 2px 16px 24px;
   }
 }
+
+.install-hint {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--ink-soft);
+  border-radius: 6px;
+  background: var(--parch-light);
+  font-size: 15px;
+}

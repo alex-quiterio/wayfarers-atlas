@@ -1322,6 +1322,42 @@
     }
   }
 
+  // src/apps/web/ui/install.ts
+  function isStandalone() {
+    return window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  }
+  function initInstall(button) {
+    let deferred = null;
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferred = e;
+      button.hidden = isStandalone();
+    });
+    button.addEventListener("click", async () => {
+      if (!deferred)
+        return;
+      await deferred.prompt();
+      deferred = null;
+      button.hidden = true;
+    });
+    window.addEventListener("appinstalled", () => {
+      deferred = null;
+      button.hidden = true;
+    });
+  }
+  function installHint() {
+    if (isStandalone())
+      return null;
+    const ua = navigator.userAgent;
+    const ios = /iPhone|iPad|iPod/.test(ua) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+    if (ios)
+      return "Install as an app: tap Share, then Add to Home Screen.";
+    const safari = /Safari/.test(ua) && !/Chrome|Chromium|Edg|Android/.test(ua);
+    if (safari)
+      return "Install as an app: choose File, then Add to Dock.";
+    return null;
+  }
+
   // src/apps/web/ui/dom.ts
   function h(tag, attrs = null, ...children) {
     const el = document.createElement(tag);
@@ -1558,7 +1594,8 @@
         ["unmapped", "Unmapped"]
       ].map(([id, label]) => h("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(tab === id), "data-act": "tab", "data-id": id }, label)));
       const intro = h("p", { class: "lede" }, `${atlas.notes.length} notes across ${atlas.realms.length} realms. Tap a seal to meet the keeper of a region, follow a road to read across realms, and look for the ? marks at the edge of the sea: they are the questions not yet written.`);
-      this.put(h("h2", null, atlas.title), intro, tabs);
+      const hint = this.handlers.installHint();
+      this.put(h("h2", null, atlas.title), intro, hint ? h("p", { class: "install-hint" }, `\uD83D\uDCF2 ${hint}`) : null, tabs);
       if (tab === "lands") {
         for (const realm of atlas.realms) {
           this.put(h("h3", null, this.linkBtn("realm", realm.id, realm.fantasyName)), h("p", { class: "lede" }, `${realm.name}. ${realm.epithet[0].toUpperCase()}${realm.epithet.slice(1)}.`), this.list(realm.regionIds.map((id) => this.regionRow(this.model.regions.get(id)))));
@@ -1829,7 +1866,8 @@
     go: (v) => go(v),
     back: () => back(),
     close: () => closePanel(),
-    canGoBack: () => stack.length > 0
+    canGoBack: () => stack.length > 0,
+    installHint
   });
   function updateInsets() {
     if (!panelOpen)
@@ -2018,9 +2056,17 @@
       closePanel();
   });
   window.addEventListener("resize", () => {
+    syncTopInset();
     scene.resize();
     updateInsets();
   });
+  initInstall(document.getElementById("install"));
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  var topbar = document.querySelector(".topbar");
+  var syncTopInset = () => camera.insetTop = topbar.offsetHeight;
+  syncTopInset();
   scene.resize();
   var start = hashToView(location.hash);
   if (start) {
