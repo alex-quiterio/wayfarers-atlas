@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Atlas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English:ital@0;1&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/map.css" />
+    <link rel="stylesheet" href="css/controls.css" />
+    <link rel="stylesheet" href="css/search.css" />
+    <link rel="stylesheet" href="css/panel.css" />
+  </head>
+  <body>
+    <canvas id="map" aria-label="Map of the notes"></canvas>
+
+    <header class="topbar">
+      <button id="menu" class="seal-btn" type="button" aria-label="Open the atlas panel">☰</button>
+      <h1 class="topbar__title"></h1>
+      <div class="search">
+        <input id="search" type="search" placeholder="Search notes, people, lands…" autocomplete="off" />
+        <ul id="results" class="search__results" hidden></ul>
+      </div>
+    </header>
+
+    <div id="tooltip" class="tooltip" hidden></div>
+
+    <div class="zoom">
+      <button id="zoom-in" class="seal-btn" type="button" aria-label="Zoom in">+</button>
+      <button id="zoom-out" class="seal-btn" type="button" aria-label="Zoom out">−</button>
+      <button id="zoom-home" class="seal-btn" type="button" aria-label="Show the whole map">⌂</button>
+    </div>
+
+    <aside id="panel" class="panel" aria-live="polite"></aside>
+
+    <noscript>This map needs JavaScript.</noscript>
+    <script src="atlas-data.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+:root {
+  --parch: #efe3c2;
+  --parch-light: #f6edd3;
+  --parch-dark: #d9c79a;
+  --table: #b9a173;
+  --ink: #3f2b1a;
+  --ink-soft: #6f5236;
+  --wax: #8c2f2b;
+  --gold: #b8892f;
+  --shadow: rgba(60, 38, 14, 0.35);
+  --font-display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --font-body: "IM Fell English", "Iowan Old Style", Georgia, serif;
+  --topbar-h: 56px;
+  --panel-w: 420px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--table);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+a {
+  color: var(--wax);
+}
+
+:focus-visible {
+  outline: 2px solid var(--wax);
+  outline-offset: 2px;
+}
