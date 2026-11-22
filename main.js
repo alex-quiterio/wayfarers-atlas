@@ -396,24 +396,61 @@
     ctx.strokeStyle = theme.ink;
     switch (d.kind) {
       case "mountain": {
+        const p1 = [-s * 0.25, -s * 0.7];
+        const notch = [s * 0.12, -s * 0.05];
+        const p2 = [s * 0.45, -s * 0.45];
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(-s * 0.95, s * 0.5);
-        ctx.lineTo(-s * 0.25, -s * 0.7);
-        ctx.lineTo(s * 0.12, -s * 0.05);
-        ctx.lineTo(s * 0.45, -s * 0.45);
+        ctx.lineTo(p1[0], p1[1]);
+        ctx.lineTo(notch[0], notch[1]);
+        ctx.lineTo(p2[0], p2[1]);
         ctx.lineTo(s * 1, s * 0.5);
+        ctx.closePath();
         ctx.fillStyle = theme.land;
         ctx.fill();
-        ctx.stroke();
-        ctx.lineWidth = 1;
-        ctx.globalAlpha *= 0.7;
+        ctx.fillStyle = "rgba(63, 43, 26, 0.2)";
         ctx.beginPath();
-        for (let i = 1;i <= 4; i++) {
-          const t = i / 5;
-          ctx.moveTo(-s * 0.25 + s * 0.12 * t, -s * 0.7 + s * 0.6 * t);
-          ctx.lineTo(-s * 0.25 + s * 0.5 * t + s * 0.1, -s * 0.7 + s * 1.15 * t);
+        ctx.moveTo(p1[0], p1[1]);
+        ctx.lineTo(notch[0], notch[1]);
+        ctx.lineTo(-s * 0.02, s * 0.5);
+        ctx.lineTo(-s * 0.3, s * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(p2[0], p2[1]);
+        ctx.lineTo(s * 1, s * 0.5);
+        ctx.lineTo(s * 0.4, s * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = theme.paperLight;
+        ctx.beginPath();
+        ctx.moveTo(p1[0], p1[1]);
+        ctx.lineTo(-s * 0.43, -s * 0.38);
+        ctx.lineTo(-s * 0.35, -s * 0.31);
+        ctx.lineTo(-s * 0.29, -s * 0.4);
+        ctx.lineTo(-s * 0.21, -s * 0.3);
+        ctx.lineTo(-s * 0.14, -s * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.lineWidth = 0.9;
+        ctx.globalAlpha *= 0.65;
+        ctx.beginPath();
+        for (let i = 1;i <= 5; i++) {
+          const t = i / 6;
+          ctx.moveTo(p1[0] + s * 0.37 * t * 0.6, p1[1] + s * 0.65 * t + s * 0.1);
+          ctx.lineTo(p1[0] + s * 0.37 * t * 0.6 + s * 0.14, p1[1] + s * 0.65 * t + s * 0.42);
         }
+        ctx.moveTo(p2[0] + s * 0.08, p2[1] + s * 0.4);
+        ctx.lineTo(p2[0] + s * 0.2, p2[1] + s * 0.85);
+        ctx.moveTo(p2[0] + s * 0.18, p2[1] + s * 0.3);
+        ctx.lineTo(p2[0] + s * 0.32, p2[1] + s * 0.72);
+        ctx.stroke();
+        ctx.globalAlpha *= 0.9;
+        ctx.beginPath();
+        ctx.arc(-s * 0.62, s * 0.5, s * 0.22, Math.PI, 0);
         ctx.stroke();
         break;
       }
@@ -421,36 +458,92 @@
         ctx.lineWidth = 1.4;
         ctx.beginPath();
         ctx.arc(0, s * 0.35, s * 0.85, Math.PI * 1.12, Math.PI * 1.88);
+        ctx.lineTo(s * 0.52, s * 0.35);
+        ctx.lineTo(-s * 0.52, s * 0.35);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(154, 128, 72, 0.2)";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, s * 0.35, s * 0.85, Math.PI * 1.12, Math.PI * 1.88);
         ctx.stroke();
-        ctx.globalAlpha *= 0.6;
+        ctx.globalAlpha *= 0.7;
+        ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.arc(flip * s * 0.1, s * 0.55, s * 0.5, Math.PI * 1.15, Math.PI * 1.7);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (const [tx, ty] of [[-0.3, 0.2], [0.25, 0.1], [0.05, 0.38]]) {
+          ctx.moveTo(s * tx, s * ty);
+          ctx.lineTo(s * tx - s * 0.07, s * ty - s * 0.16);
+          ctx.moveTo(s * tx, s * ty);
+          ctx.lineTo(s * tx, s * ty - s * 0.2);
+          ctx.moveTo(s * tx, s * ty);
+          ctx.lineTo(s * tx + s * 0.07, s * ty - s * 0.16);
+        }
         ctx.stroke();
         break;
       }
       case "tree": {
-        ctx.lineWidth = 1.3;
-        ctx.beginPath();
-        ctx.moveTo(0, -s * 0.8);
-        ctx.lineTo(-s * 0.42, s * 0.25);
-        ctx.lineTo(s * 0.42, s * 0.25);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(86, 112, 62, 0.42)";
-        ctx.fill();
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, s * 0.25);
-        ctx.lineTo(0, s * 0.55);
-        ctx.stroke();
+        const green = `rgba(${Math.round(70 + d.seed * 36)}, ${Math.round(104 + d.seed * 34)}, 58, 0.52)`;
+        const pine = (x, w, h) => {
+          ctx.beginPath();
+          ctx.moveTo(x, s * 0.55);
+          ctx.lineTo(x, s * 0.25);
+          ctx.stroke();
+          for (let tier = 0;tier < 3; tier++) {
+            const top = -h + tier * h * 0.36;
+            const spread = w * (0.5 + tier * 0.3);
+            ctx.beginPath();
+            ctx.moveTo(x, top);
+            ctx.lineTo(x - spread, top + h * 0.5);
+            ctx.lineTo(x + spread, top + h * 0.5);
+            ctx.closePath();
+            ctx.fillStyle = green;
+            ctx.fill();
+            ctx.stroke();
+          }
+        };
+        ctx.lineWidth = 1.2;
+        if (d.seed < 0.4) {
+          pine(0, s * 0.42, s * 0.8);
+        } else if (d.seed < 0.75) {
+          ctx.beginPath();
+          ctx.moveTo(0, s * 0.55);
+          ctx.quadraticCurveTo(-s * 0.04, s * 0.2, 0, s * 0.05);
+          ctx.stroke();
+          for (const [cx, cy, cr] of [[-0.28, -0.12, 0.34], [0.28, -0.12, 0.34], [0, -0.4, 0.4], [0, -0.02, 0.36]]) {
+            ctx.beginPath();
+            ctx.arc(s * cx, s * cy, s * cr, 0, Math.PI * 2);
+            ctx.fillStyle = green;
+            ctx.fill();
+            ctx.stroke();
+          }
+        } else {
+          ctx.save();
+          ctx.translate(-s * 0.3, s * 0.1);
+          pine(0, s * 0.3, s * 0.62);
+          ctx.restore();
+          ctx.save();
+          ctx.translate(s * 0.3, -s * 0.05);
+          pine(0, s * 0.34, s * 0.72);
+          ctx.restore();
+        }
         break;
       }
       case "wave": {
         ctx.lineWidth = 1.3;
-        ctx.globalAlpha *= 0.45;
+        ctx.globalAlpha *= 0.5;
         ctx.beginPath();
         ctx.moveTo(-s, 0);
         ctx.quadraticCurveTo(-s * 0.5, -s * 0.55 * flip, 0, 0);
         ctx.quadraticCurveTo(s * 0.5, s * 0.55 * flip, s, 0);
+        ctx.stroke();
+        ctx.globalAlpha *= 0.7;
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.55, s * 0.5);
+        ctx.quadraticCurveTo(-s * 0.2, s * 0.2 * flip + s * 0.5, s * 0.15, s * 0.5);
+        ctx.quadraticCurveTo(s * 0.35, s * 0.5 - s * 0.2 * flip, s * 0.6, s * 0.5);
         ctx.stroke();
         break;
       }
@@ -458,32 +551,53 @@
         ctx.scale(flip, 1);
         ctx.lineWidth = 1.6;
         ctx.beginPath();
-        ctx.moveTo(-s * 0.55, 0);
-        ctx.lineTo(s * 0.55, 0);
-        ctx.lineTo(s * 0.32, s * 0.25);
-        ctx.lineTo(-s * 0.32, s * 0.25);
+        ctx.moveTo(-s * 0.62, -s * 0.02);
+        ctx.quadraticCurveTo(-s * 0.5, s * 0.34, -s * 0.26, s * 0.34);
+        ctx.lineTo(s * 0.3, s * 0.34);
+        ctx.quadraticCurveTo(s * 0.52, s * 0.3, s * 0.66, -s * 0.12);
+        ctx.lineTo(s * 0.5, -s * 0.02);
         ctx.closePath();
         ctx.fillStyle = theme.land;
         ctx.fill();
         ctx.stroke();
+        ctx.fillStyle = "rgba(140, 47, 43, 0.55)";
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(0, -s * 0.95);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, -s * 0.9);
-        ctx.quadraticCurveTo(s * 0.55, -s * 0.5, s * 0.4, -s * 0.08);
-        ctx.lineTo(0, -s * 0.08);
+        ctx.moveTo(-s * 0.58, s * 0.08);
+        ctx.lineTo(s * 0.55, s * 0.08);
+        ctx.lineTo(s * 0.46, s * 0.17);
+        ctx.lineTo(-s * 0.5, s * 0.17);
         ctx.closePath();
-        ctx.fillStyle = theme.paperLight;
         ctx.fill();
-        ctx.stroke();
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(0, -s * 0.95);
-        ctx.lineTo(-s * 0.25, -s * 0.85);
-        ctx.lineTo(0, -s * 0.75);
+        ctx.moveTo(-s * 0.18, 0);
+        ctx.lineTo(-s * 0.18, -s * 0.95);
+        ctx.moveTo(s * 0.22, 0);
+        ctx.lineTo(s * 0.22, -s * 0.75);
+        ctx.stroke();
+        for (const [mx, top, w, bottom] of [[-0.18, -0.9, 0.5, -0.1], [0.22, -0.7, 0.36, -0.08]]) {
+          ctx.beginPath();
+          ctx.moveTo(s * mx, s * top);
+          ctx.quadraticCurveTo(s * (mx + w), s * (top + (bottom - top) * 0.4), s * (mx + w * 0.78), s * bottom);
+          ctx.lineTo(s * mx, s * bottom);
+          ctx.closePath();
+          ctx.fillStyle = theme.paperLight;
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.18, -s * 0.95);
+        ctx.lineTo(-s * 0.46, -s * 0.85);
+        ctx.lineTo(-s * 0.18, -s * 0.75);
         ctx.fillStyle = theme.wax;
         ctx.fill();
+        ctx.lineWidth = 1.1;
+        ctx.globalAlpha *= 0.5;
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.7, s * 0.5);
+        ctx.quadraticCurveTo(-s * 0.4, s * 0.38, -s * 0.1, s * 0.5);
+        ctx.quadraticCurveTo(s * 0.2, s * 0.62, s * 0.5, s * 0.5);
+        ctx.stroke();
         break;
       }
       case "serpent": {
@@ -757,6 +871,14 @@
       sheet.addColorStop(1, theme.paperDark);
       ctx.fillStyle = sheet;
       ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "rgba(92, 140, 150, 0.2)";
+      ctx.fillRect(0, 0, W, H);
+      const deep = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.hypot(W, H) / 2);
+      deep.addColorStop(0, "rgba(60, 110, 130, 0)");
+      deep.addColorStop(1, "rgba(60, 110, 130, 0.22)");
+      ctx.fillStyle = deep;
+      ctx.fillRect(0, 0, W, H);
+      this.drawRhumbs(W, H, atlas.furniture.compass);
       this.drawFrame(W, H);
       this.drawLanes(L.lanes);
       ctx.globalAlpha = L.glyph;
@@ -794,30 +916,52 @@
       this.drawNoteLabels(L.noteLabel);
       this.drawFrontiers(L);
     }
+    drawRhumbs(W, H, compass) {
+      const { ctx } = this;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(62, 62, W - 124, H - 124);
+      ctx.clip();
+      ctx.strokeStyle = theme.inkSoft;
+      ctx.lineWidth = 1.1;
+      ctx.globalAlpha = 0.09;
+      const hubs = [compass, { x: W * 0.5, y: H * 0.5 }, { x: W * 0.18, y: H * 0.82 }];
+      for (const hub of hubs) {
+        for (let i = 0;i < 32; i++) {
+          const angle = i / 32 * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(hub.x, hub.y);
+          ctx.lineTo(hub.x + Math.cos(angle) * 6000, hub.y + Math.sin(angle) * 6000);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
     drawFrame(W, H) {
       const { ctx } = this;
+      const band = 16;
+      ctx.fillStyle = theme.ink;
+      for (let i = 0, x = 46;x < W - 46; i++, x += band) {
+        if (i % 2 === 0) {
+          const w = Math.min(band, W - 46 - x);
+          ctx.fillRect(x, 46, w, band);
+          ctx.fillRect(x, H - 46 - band, w, band);
+        }
+      }
+      for (let i = 0, y = 46 + band;y < H - 46 - band; i++, y += band) {
+        if (i % 2 === 1) {
+          const h = Math.min(band, H - 46 - band - y);
+          ctx.fillRect(46, y, band, h);
+          ctx.fillRect(W - 46 - band, y, band, h);
+        }
+      }
       ctx.strokeStyle = theme.ink;
       ctx.lineWidth = 4;
       ctx.strokeRect(46, 46, W - 92, H - 92);
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.5;
       ctx.strokeRect(62, 62, W - 124, H - 124);
       ctx.lineWidth = 1;
-      for (let x = 62;x <= W - 62; x += 100) {
-        ctx.beginPath();
-        ctx.moveTo(x, 46);
-        ctx.lineTo(x, 62);
-        ctx.moveTo(x, H - 46);
-        ctx.lineTo(x, H - 62);
-        ctx.stroke();
-      }
-      for (let y = 62;y <= H - 62; y += 100) {
-        ctx.beginPath();
-        ctx.moveTo(46, y);
-        ctx.lineTo(62, y);
-        ctx.moveTo(W - 46, y);
-        ctx.lineTo(W - 62, y);
-        ctx.stroke();
-      }
+      ctx.strokeRect(38, 38, W - 76, H - 76);
     }
     drawLanes(alpha) {
       if (alpha < 0.02)
@@ -844,12 +988,36 @@
       }
       ctx.restore();
     }
+    shallows(path) {
+      const { ctx } = this;
+      ctx.save();
+      ctx.lineJoin = "round";
+      for (const [w, a] of [[96, 0.07], [64, 0.1], [36, 0.13], [16, 0.16]]) {
+        ctx.strokeStyle = `rgba(170, 214, 206, ${a})`;
+        ctx.lineWidth = w;
+        ctx.stroke(path);
+      }
+      ctx.restore();
+    }
     drawIslets() {
       const { ctx } = this;
       ctx.lineJoin = "round";
+      for (const path of this.isletPaths)
+        this.shallows(path);
       for (const path of this.isletPaths) {
+        ctx.save();
+        ctx.translate(4, 5);
+        ctx.fillStyle = "rgba(40, 25, 8, 0.22)";
+        ctx.fill(path);
+        ctx.restore();
         ctx.fillStyle = theme.land;
         ctx.fill(path);
+        ctx.save();
+        ctx.clip(path);
+        ctx.strokeStyle = "rgba(63, 43, 26, 0.14)";
+        ctx.lineWidth = 12;
+        ctx.stroke(path);
+        ctx.restore();
         ctx.strokeStyle = theme.ink;
         ctx.lineWidth = 1.8;
         ctx.stroke(path);
@@ -861,6 +1029,7 @@
       const c = realm.center;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
+      this.shallows(coast);
       ctx.strokeStyle = theme.inkSoft;
       [[1.05, 0.34], [1.1, 0.22], [1.16, 0.12]].forEach(([k, a], i) => {
         ctx.save();
@@ -878,7 +1047,18 @@
       ctx.lineWidth = 40;
       ctx.stroke(coast);
       ctx.restore();
-      ctx.fillStyle = theme.land;
+      ctx.save();
+      ctx.translate(6, 8);
+      ctx.fillStyle = "rgba(40, 25, 8, 0.24)";
+      ctx.fill(coast);
+      ctx.restore();
+      const b = model.realmBounds(realm);
+      const reach = Math.max(b.maxX - b.minX, b.maxY - b.minY) / 2;
+      const paint = ctx.createRadialGradient(c.x, c.y, reach * 0.1, c.x, c.y, reach);
+      paint.addColorStop(0, theme.paperLight);
+      paint.addColorStop(0.6, theme.land);
+      paint.addColorStop(1, "#e2cf9c");
+      ctx.fillStyle = paint;
       ctx.fill(coast);
       for (const id of realm.regionIds) {
         const region = model.regions.get(id);
@@ -895,6 +1075,18 @@
       ctx.strokeStyle = "rgba(63, 43, 26, 0.12)";
       ctx.lineWidth = 22;
       ctx.stroke(coast);
+      ctx.strokeStyle = theme.inkSoft;
+      [[0.93, 0.2], [0.86, 0.14], [0.79, 0.1]].forEach(([k, a]) => {
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.scale(k, k);
+        ctx.translate(-c.x, -c.y);
+        ctx.globalAlpha = a;
+        ctx.lineWidth = 1.2 / k;
+        ctx.setLineDash([10, 7]);
+        ctx.stroke(coast);
+        ctx.restore();
+      });
       ctx.restore();
       ctx.strokeStyle = theme.ink;
       ctx.lineWidth = 1.6;
