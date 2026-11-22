@@ -68,3 +68,17 @@
   font-style: italic;
   color: var(--ink-soft);
 }
+
+.search input {
+  font-size: 16px;
+}
+
+.search__results li {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.search__sub {
+  font-style: normal;
+  font-size: 14px;
+}

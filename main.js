@@ -570,7 +570,7 @@
     inkSoft: "#6f5236",
     halo: "rgba(244, 234, 208, 0.92)",
     display: '"Cinzel", "Trajan Pro", Georgia, serif',
-    body: '"IM Fell English", "Iowan Old Style", Georgia, serif',
+    body: '"Source Serif 4", "Iowan Old Style", Georgia, serif',
     emoji: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'
   };
   function applyTheme(mode) {
@@ -2269,6 +2269,7 @@
     scroll;
     bar;
     grip;
+    resizer;
     constructor(root, model, handlers) {
       this.root = root;
       this.model = model;
@@ -2276,7 +2277,8 @@
       this.grip = h("div", { class: "panel__grip", role: "button", "aria-label": "Drag to resize the panel", tabindex: "-1" });
       this.bar = h("div", { class: "panel__bar" });
       this.scroll = h("div", { class: "panel__scroll" });
-      root.append(this.grip, this.bar, this.scroll);
+      this.resizer = h("div", { class: "panel__resizer", role: "separator", "aria-orientation": "vertical", "aria-label": "Drag to resize the panel", title: "Drag to resize, double-click to widen" });
+      root.append(this.resizer, this.grip, this.bar, this.scroll);
       root.addEventListener("click", (e) => this.onClick(e));
     }
     onClick(e) {
@@ -2814,6 +2816,58 @@
       setSheet(SHEET_NAMES[nearest]);
     }
   });
+  var WIDTH_KEY = "atlas-panel-w";
+  var sidePanelLayout = () => window.matchMedia("(min-width: 761px) and (min-height: 521px)").matches;
+  var widthBounds = () => [360, Math.max(420, Math.min(960, Math.round(window.innerWidth * 0.7)))];
+  var clampWidth = (w) => Math.max(widthBounds()[0], Math.min(widthBounds()[1], Math.round(w)));
+  function applyPanelWidth(w) {
+    if (w === null)
+      document.documentElement.style.removeProperty("--panel-w");
+    else
+      document.documentElement.style.setProperty("--panel-w", `${clampWidth(w)}px`);
+    updateInsets();
+  }
+  try {
+    const saved = Number(localStorage.getItem(WIDTH_KEY));
+    if (saved > 0 && sidePanelLayout())
+      document.documentElement.style.setProperty("--panel-w", `${clampWidth(saved)}px`);
+  } catch {}
+  var rememberWidth = (w) => {
+    try {
+      if (w === null)
+        localStorage.removeItem(WIDTH_KEY);
+      else
+        localStorage.setItem(WIDTH_KEY, String(clampWidth(w)));
+    } catch {}
+  };
+  panel.resizer.addEventListener("pointerdown", (e) => {
+    if (!sidePanelLayout())
+      return;
+    panel.resizer.setPointerCapture(e.pointerId);
+    panelEl.classList.add("is-resizing");
+    const move = (ev) => applyPanelWidth(window.innerWidth - ev.clientX - 12);
+    const stop = () => {
+      panel.resizer.removeEventListener("pointermove", move);
+      panel.resizer.removeEventListener("pointerup", stop);
+      panel.resizer.removeEventListener("pointercancel", stop);
+      panelEl.classList.remove("is-resizing");
+      rememberWidth(panelEl.getBoundingClientRect().width);
+    };
+    panel.resizer.addEventListener("pointermove", move);
+    panel.resizer.addEventListener("pointerup", stop);
+    panel.resizer.addEventListener("pointercancel", stop);
+  });
+  panel.resizer.addEventListener("dblclick", () => {
+    const wide = Math.round(Math.min(window.innerWidth * 0.5, 760));
+    const now = panelEl.getBoundingClientRect().width;
+    if (Math.abs(now - wide) < 24) {
+      applyPanelWidth(null);
+      rememberWidth(null);
+    } else {
+      applyPanelWidth(wide);
+      rememberWidth(wide);
+    }
+  });
   var sentinel = false;
   var ignorePops = 0;
   function pushSentinel() {
@@ -3075,7 +3129,26 @@
   var syncTopInset = () => camera.insetTop = topbar.offsetHeight;
   syncTopInset();
   scene.resize();
-  var start = hashToView(location.hash);
+  function viewExists(v) {
+    switch (v.kind) {
+      case "note":
+        return model.notes.has(v.id);
+      case "region":
+        return model.regions.has(v.id);
+      case "realm":
+        return model.realms.has(v.id);
+      case "road":
+        return model.roads.has(v.id);
+      case "frontier":
+        return model.frontiers.has(v.id);
+      case "bridge":
+        return model.bridgesById.has(v.id);
+      default:
+        return true;
+    }
+  }
+  var deepLink = hashToView(location.hash);
+  var start = deepLink && viewExists(deepLink) ? deepLink : null;
   if (start) {
     go(start, { push: false, fly: false });
     applyView(start, true);
@@ -3088,7 +3161,8 @@
   var redraw = () => dirty = true;
   document.fonts?.ready.then(redraw);
   document.fonts?.load('700 20px "Cinzel"').then(redraw);
-  document.fonts?.load('16px "IM Fell English"').then(redraw);
+  document.fonts?.load('16px "Source Serif 4"').then(redraw);
+  document.fonts?.load('italic 16px "Source Serif 4"').then(redraw);
   function frame(now) {
     if (camera.animating) {
       camera.tick(now);

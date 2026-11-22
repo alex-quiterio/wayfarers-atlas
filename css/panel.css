@@ -61,6 +61,48 @@ body.panel-open .panel {
   display: none;
 }
 
+/* Drag the left edge to resize the side panel; double-click to flip between normal and wide. */
+.panel__resizer {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 14px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel__resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 4px;
+  height: 52px;
+  margin-top: -26px;
+  border-radius: 2px;
+  background: var(--ink-soft);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.panel:hover .panel__resizer::after,
+.panel__resizer:hover::after,
+.panel.is-resizing .panel__resizer::after {
+  opacity: 0.55;
+}
+
+.panel.is-resizing {
+  user-select: none;
+}
+
+@media (max-width: 760px), (max-height: 520px) and (orientation: landscape) {
+  .panel__resizer {
+    display: none;
+  }
+}
+
 .panel__scroll {
   flex: 1;
   overflow-y: auto;
@@ -511,4 +553,71 @@ button.chip:hover {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--wax);
+}
+
+/* ---- Readability: bigger, upright, more open text for the things you actually read. ---- */
+.panel__scroll {
+  font-size: 17.5px;
+  line-height: 1.6;
+}
+
+.note-body {
+  font-size: 18px;
+  line-height: 1.72;
+  letter-spacing: 0.005em;
+}
+
+.note-body p,
+.note-body li {
+  margin: 0 0 0.95em;
+}
+
+.note-body li {
+  margin-bottom: 0.45em;
+}
+
+.note-body h2,
+.note-body h3,
+.note-body h4 {
+  margin-top: 1.5em;
+  line-height: 1.3;
+}
+
+.lede {
+  font-size: 17px;
+  line-height: 1.55;
+  font-style: normal;
+  color: var(--ink-soft);
+}
+
+.row__text {
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.row__sub {
+  font-size: 14px;
+  font-style: normal;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.chip,
+button.chip {
+  font-size: 14px;
+}
+
+.bridge-note {
+  font-size: 15.5px;
+  line-height: 1.4;
+}
+
+.speech,
+.npc__epithet {
+  font-family: var(--font-flair);
+}
+
+.today__label,
+.panel__crumb {
+  font-size: 12px;
 }

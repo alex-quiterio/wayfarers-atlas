@@ -11,9 +11,12 @@
   --gold: #b8892f;
   --shadow: rgba(60, 38, 14, 0.35);
   --font-display: "Cinzel", "Trajan Pro", Georgia, serif;
-  --font-body: "IM Fell English", "Iowan Old Style", Georgia, serif;
+  /* Reading text: a screen-first serif. IM Fell is kept only for flavour (the keepers' quotes). */
+  --font-body: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-flair: "IM Fell English", "Iowan Old Style", Georgia, serif;
   --topbar-h: calc(56px + env(safe-area-inset-top, 0px));
-  --panel-w: 420px;
+  /* The side panel scales with the screen (about a third of it), and can be dragged wider. */
+  --panel-w: clamp(420px, 32vw, 580px);
 }
 
 :root[data-theme="night"] {
@@ -46,7 +49,8 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 17px;
-  line-height: 1.45;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
 
