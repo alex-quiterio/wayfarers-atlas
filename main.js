@@ -2302,7 +2302,7 @@
     };
     await attempt(async () => {
       const regs = await navigator.serviceWorker?.getRegistrations() ?? [];
-      await Promise.all(regs.map((r) => r.update()));
+      await Promise.all(regs.map((r) => r.unregister()));
     });
     await attempt(async () => {
       const keys = await caches.keys();
@@ -2310,13 +2310,28 @@
     });
     await attempt(async () => {
       const urls = new Set(["./", "main.js", "atlas-data.js", "sw.js", "manifest.webmanifest"]);
-      document.querySelectorAll('link[rel="stylesheet"][href]').forEach((l) => {
+      document.querySelectorAll('link[rel="stylesheet"][href], link[rel="manifest"][href], link[rel~="icon"][href]').forEach((l) => {
         if (new URL(l.href).origin === location.origin)
           urls.add(l.getAttribute("href"));
       });
+      document.querySelectorAll("script[src]").forEach((s) => {
+        if (new URL(s.src).origin === location.origin)
+          urls.add(s.getAttribute("src"));
+      });
       await Promise.all([...urls].map((u) => fetch(u, { cache: "reload" })));
     });
-    location.reload();
+    const next = new URL(location.href);
+    next.searchParams.set("r", String(Date.now()));
+    location.replace(next.toString());
+  }
+  function cleanRefreshParam() {
+    const url = new URL(location.href);
+    if (!url.searchParams.has("r"))
+      return;
+    url.searchParams.delete("r");
+    try {
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+    } catch {}
   }
 
   // src/apps/web/ui/search.ts
@@ -2463,6 +2478,7 @@
   }
 
   // src/apps/web/main.ts
+  cleanRefreshParam();
   var atlas = window.__ATLAS__;
   var model = new AtlasModel(atlas);
   var canvas = document.getElementById("map");
