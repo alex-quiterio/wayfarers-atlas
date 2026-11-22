@@ -1104,7 +1104,7 @@
         }
       }
       ctx.strokeStyle = theme.ink;
-      ctx.lineWidth = state.selectedRealm === realm.id ? 4.6 : 3;
+      ctx.lineWidth = state.selectedRealm === realm.id ? 4.2 : 2.4;
       ctx.stroke(coast);
       ctx.globalAlpha = glyphAlpha;
       for (const d of model.atlas.decor) {
