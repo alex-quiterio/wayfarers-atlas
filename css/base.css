@@ -1,10 +1,12 @@
 :root {
+  /* Day: warm parchment, brown ink. */
   --parch: #efe3c2;
   --parch-light: #f6edd3;
   --parch-dark: #d9c79a;
   --table: #b9a173;
   --ink: #3f2b1a;
   --ink-soft: #6f5236;
+  --line: #3f2b1a;
   --wax: #8c2f2b;
   --gold: #b8892f;
   --shadow: rgba(60, 38, 14, 0.35);
@@ -12,6 +14,21 @@
   --font-body: "IM Fell English", "Iowan Old Style", Georgia, serif;
   --topbar-h: calc(56px + env(safe-area-inset-top, 0px));
   --panel-w: 420px;
+}
+
+:root[data-theme="night"] {
+  /* Night: a deep-navy chart room, with parchment-coloured text and gilt lines. */
+  --parch: #15243d;
+  --parch-light: #1c2e4b;
+  --parch-dark: #0e1a2e;
+  --table: #060b14;
+  --ink: #efe6cb;
+  --ink-soft: #b9ad90;
+  --line: #a89968;
+  --wax: #e0806f;
+  --gold: #d8a94b;
+  --shadow: rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
 }
 
 * {

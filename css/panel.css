@@ -8,7 +8,7 @@
   display: none;
   flex-direction: column;
   background: linear-gradient(180deg, var(--parch-light), var(--parch));
-  border: 2px solid var(--ink);
+  border: 2px solid var(--line);
   border-radius: 4px;
   box-shadow: 0 10px 30px var(--shadow), inset 0 0 0 5px var(--parch), inset 0 0 0 6px var(--ink-soft);
   overflow: hidden;
@@ -45,6 +45,9 @@ body.panel-open .panel {
 
 .panel__icon {
   flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
   width: 36px;
   height: 36px;
   border: 1px solid var(--ink-soft);
@@ -331,7 +334,7 @@ button.chip:hover {
 .btn {
   flex: 1;
   padding: 10px 12px;
-  border: 2px solid var(--ink);
+  border: 2px solid var(--line);
   border-radius: 4px;
   background: var(--wax);
   color: #f6e7c6;
@@ -447,17 +450,49 @@ button.chip:hover {
   font-size: 15px;
 }
 
+/* One link across a bridge: the note it starts from, an arrow, the note it leads to. Always stacked and aligned. */
 .bridge-link {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 8px;
-  padding: 6px 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 10px 0 12px;
+  border-bottom: 1px dotted var(--ink-soft);
+}
+
+.bridge-note {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--parch-light);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.bridge-note:hover,
+.bridge-note:focus-visible {
+  background: var(--parch-dark);
 }
 
 .bridge-link__arrow {
+  align-self: flex-start;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 22px;
+  margin-left: 12px;
   color: var(--wax);
-  font-weight: 700;
+}
+
+.bridge-link__arrow::before {
+  width: 16px;
+  height: 16px;
 }
 
 .today {

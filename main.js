@@ -262,11 +262,11 @@
 
   // src/apps/web/bridges.ts
   var MIN_LINKS = 2;
-  var MAX_BRIDGES = 14;
+  var MAX_BRIDGES = 16;
   var MAX_PER_REALM_PAIR = 2;
-  var MAX_GULF_BRIDGES = 4;
-  var MAX_SEA_SPAN = 1000;
-  var MAX_GULF_SPAN = 520;
+  var MAX_ROAD = 950;
+  var MAX_ROADS = 7;
+  var MAX_GAP = 520;
   var MIN_SPAN = 40;
   var LAND_OVERLAP = 12;
   function bridgePoint(b, t) {
@@ -283,44 +283,39 @@
       h = h * 31 + id.charCodeAt(i) | 0;
     return (h & 1 ? 1 : -1) * 0.07;
   }
-  function findSpan(ra, rb, realms) {
+  function findSpan(ra, rb, realms, continent) {
     const A = ra.center;
     const B = rb.center;
     const len = distance(A, B);
     const n = Math.max(2, Math.ceil(len / 6));
     const at = (i) => ({ x: A.x + (B.x - A.x) * i / n, y: A.y + (B.y - A.y) * i / n });
+    const onLand = Array.from({ length: n + 1 }, (_, i) => pointInPolygon(at(i), continent));
+    const firstWater = onLand.indexOf(false);
+    if (firstWater >= 0) {
+      let k = firstWater;
+      while (k <= n && !onLand[k])
+        k++;
+      if (k > n)
+        return null;
+      return { p0: at(firstWater - 1 >= 0 ? firstWater - 1 : 0), p1: at(k), over: "water" };
+    }
+    if (ra.realmId === rb.realmId || len > MAX_ROAD)
+      return null;
     const realmA = realms.get(ra.realmId);
     const realmB = realms.get(rb.realmId);
-    if (ra.realmId !== rb.realmId) {
-      let i = 0;
-      while (i <= n && pointInPolygon(at(i), realmA.coast))
-        i++;
-      let j = n;
-      while (j >= 0 && pointInPolygon(at(j), realmB.coast))
-        j--;
-      if (i > j)
-        return null;
-      for (let k = i;k <= j; k++) {
-        for (const other of realms.values()) {
-          if (other !== realmA && other !== realmB && pointInPolygon(at(k), other.coast))
-            return null;
-        }
-      }
-      return { p0: at(i), p1: at(j), sea: true };
+    let inside = 0;
+    for (let i = 0;i <= n; i++) {
+      const p = at(i);
+      if (pointInPolygon(p, realmA.coast) || pointInPolygon(p, realmB.coast))
+        inside++;
     }
-    let i = 0;
-    while (i <= n && pointInPolygon(at(i), realmA.coast))
-      i++;
-    if (i > n)
+    if (inside / (n + 1) < 0.92)
       return null;
-    let k = i;
-    while (k <= n && !pointInPolygon(at(k), realmA.coast))
-      k++;
-    if (k > n)
-      return null;
-    return { p0: at(i), p1: at(k), sea: false };
+    return { p0: A, p1: B, over: "land" };
   }
-  function computeBridges(notes, regions, realms) {
+  function computeBridges(notes, regions, realms, continent) {
+    if (continent.length < 3)
+      return [];
     const groups = new Map;
     for (const note of notes.values()) {
       for (const target of note.links) {
@@ -342,18 +337,19 @@
       const rb = regions.get(g.b);
       if (!ra || !rb)
         continue;
-      const span = findSpan(ra, rb, realms);
+      const span = findSpan(ra, rb, realms, continent);
       if (!span)
         continue;
       const spanLen = distance(span.p0, span.p1);
-      if (spanLen < MIN_SPAN || spanLen > (span.sea ? MAX_SEA_SPAN : MAX_GULF_SPAN))
+      if (spanLen < MIN_SPAN || span.over === "water" && spanLen > MAX_GAP)
         continue;
+      const overlap = span.over === "water" ? LAND_OVERLAP : 0;
       const dx = (span.p1.x - span.p0.x) / spanLen;
       const dy = (span.p1.y - span.p0.y) / spanLen;
-      const p0 = { x: span.p0.x - dx * LAND_OVERLAP, y: span.p0.y - dy * LAND_OVERLAP };
-      const p1 = { x: span.p1.x + dx * LAND_OVERLAP, y: span.p1.y + dy * LAND_OVERLAP };
-      const length = spanLen + LAND_OVERLAP * 2;
-      const k = bow(id) * length;
+      const p0 = { x: span.p0.x - dx * overlap, y: span.p0.y - dy * overlap };
+      const p1 = { x: span.p1.x + dx * overlap, y: span.p1.y + dy * overlap };
+      const length = spanLen + overlap * 2;
+      const k = bow(id) * length * (span.over === "land" ? 1.6 : 1);
       const c = { x: (p0.x + p1.x) / 2 - dy * k, y: (p0.y + p1.y) / 2 + dx * k };
       candidates.push({
         id,
@@ -366,28 +362,29 @@
         p1,
         c,
         length,
-        kind: kindFor(g.links.length)
+        kind: span.over === "land" ? "road" : kindFor(g.links.length)
       });
     }
     candidates.sort((x, y) => y.count - x.count || x.length - y.length);
     const chosen = [];
     const perPair = new Map;
-    let gulfs = 0;
+    let roads = 0;
     for (const cand of candidates) {
       if (chosen.length >= MAX_BRIDGES)
         break;
       const mid = bridgePoint(cand, 0.5);
       if (chosen.some((o) => distance(bridgePoint(o, 0.5), mid) < 130))
         continue;
-      if (cand.crossRealm) {
-        const key = [regions.get(cand.a).realmId, regions.get(cand.b).realmId].sort().join("|");
+      const key = [regions.get(cand.a).realmId, regions.get(cand.b).realmId].sort().join("|");
+      if (cand.kind === "road") {
+        if (roads >= MAX_ROADS || perPair.has(`road:${key}`))
+          continue;
+        perPair.set(`road:${key}`, 1);
+        roads++;
+      } else {
         if ((perPair.get(key) ?? 0) >= MAX_PER_REALM_PAIR)
           continue;
         perPair.set(key, (perPair.get(key) ?? 0) + 1);
-      } else {
-        if (gulfs >= MAX_GULF_BRIDGES)
-          continue;
-        gulfs++;
       }
       chosen.push(cand);
     }
@@ -412,6 +409,8 @@
       this.atlas = atlas;
       for (const n of atlas.notes)
         this.notes.set(n.id, n);
+      for (const r of atlas.regions)
+        r.placeName ??= r.name;
       for (const r of atlas.regions)
         this.regions.set(r.id, r);
       for (const r of atlas.realms)
@@ -446,7 +445,7 @@
         const [a, b] = key.split("|");
         this.lanes.push({ a, b, count });
       }
-      this.bridges = computeBridges(this.notes, this.regions, this.realms);
+      this.bridges = computeBridges(this.notes, this.regions, this.realms, atlas.continent?.coast ?? []);
       for (const b of this.bridges)
         this.bridgesById.set(b.id, b);
     }
@@ -479,22 +478,105 @@
     }
   }
 
+  // src/domain/rng.ts
+  function hashString(text) {
+    let h = 2166136261;
+    for (let i = 0;i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+  function createRng(seed) {
+    let a = hashString(seed);
+    return () => {
+      a = a + 1831565813 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
   // src/apps/web/render/theme.ts
-  var theme = {
+  var day = {
+    mode: "day",
     table: "#b9a173",
+    seaLight: "#f4ead0",
+    sea: "#eadcb6",
+    seaDark: "#cdb986",
+    seaInk: "#3f2b1a",
+    seaLine: "#6f5236",
+    frame: "#3f2b1a",
+    land: "#f1e6c6",
+    landLight: "#f4ead0",
+    landEdge: "#e2cf9c",
+    gold: "#c79a35",
+    wax: "#8c2f2b",
+    seaText: "#6f5236",
+    seaHalo: "rgba(244, 234, 208, 0.92)",
+    wash: "rgba(92, 140, 150, 0.2)",
+    vignetteInner: "rgba(60, 110, 130, 0)",
+    vignetteOuter: "rgba(60, 110, 130, 0.22)",
+    shadowRGB: "40, 25, 8",
+    shadowBoost: 1,
+    sheetShadow: "rgba(40, 25, 8, 0.5)",
+    haze: "rgba(111, 82, 54, 0.07)",
+    shallowRGB: "170, 214, 206",
+    shallows: [[96, 0.07], [64, 0.1], [36, 0.13], [16, 0.16]],
+    fogRGB: "120, 105, 80",
+    rhumbAlpha: 0.09,
+    laneAlpha: 0.32,
+    sky: false,
+    medallion: false
+  };
+  var night = {
+    mode: "night",
+    table: "#060b14",
+    seaLight: "#1d3050",
+    sea: "#12213b",
+    seaDark: "#091221",
+    seaInk: "#9dbbd2",
+    seaLine: "#9dbbd2",
+    frame: "#c9a86a",
+    land: "#d6cba5",
+    landLight: "#e6dcba",
+    landEdge: "#a99b72",
+    gold: "#d8a94b",
+    wax: "#8c2f2b",
+    seaText: "#d5e2ee",
+    seaHalo: "rgba(8, 14, 28, 0.9)",
+    wash: null,
+    vignetteInner: "rgba(2, 6, 14, 0)",
+    vignetteOuter: "rgba(2, 6, 14, 0.5)",
+    shadowRGB: "0, 0, 0",
+    shadowBoost: 1.9,
+    sheetShadow: "rgba(0, 0, 0, 0.7)",
+    haze: "rgba(0, 0, 0, 0.18)",
+    shallowRGB: "112, 184, 214",
+    shallows: [[110, 0.08], [72, 0.12], [40, 0.17], [18, 0.24]],
+    fogRGB: "150, 175, 210",
+    rhumbAlpha: 0.11,
+    laneAlpha: 0.38,
+    sky: true,
+    medallion: true
+  };
+  var palettes = { day, night };
+  var theme = {
+    ...night,
     paperLight: "#f4ead0",
     paper: "#eadcb6",
     paperDark: "#cdb986",
-    land: "#f1e6c6",
     ink: "#3f2b1a",
     inkSoft: "#6f5236",
-    wax: "#8c2f2b",
-    gold: "#c79a35",
     halo: "rgba(244, 234, 208, 0.92)",
     display: '"Cinzel", "Trajan Pro", Georgia, serif',
     body: '"IM Fell English", "Iowan Old Style", Georgia, serif',
     emoji: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'
   };
+  function applyTheme(mode) {
+    Object.assign(theme, palettes[mode]);
+  }
+  var shade = (alpha) => `rgba(${theme.shadowRGB}, ${Math.min(1, alpha * theme.shadowBoost)})`;
   var clamp01 = (v) => Math.max(0, Math.min(1, v));
   function smooth(a, b, x) {
     const t = clamp01((x - a) / (b - a));
@@ -504,7 +586,7 @@
     return {
       realmLabel: 1 - smooth(0.34, 0.62, s),
       seal: smooth(0.2, 0.34, s),
-      regionLabel: smooth(0.26, 0.4, s) * (1 - smooth(1.5, 2.2, s)),
+      regionLabel: smooth(0.36, 0.52, s) * (1 - smooth(1.5, 2.2, s)),
       noteLabel: smooth(0.7, 1, s),
       lanes: 1 - smooth(0.45, 0.9, s),
       glyph: 1 - 0.68 * smooth(0.7, 1.4, s)
@@ -560,14 +642,32 @@
       ctx.globalAlpha = 1;
       ctx.lineCap = "butt";
     }
-    if (b.kind === "stone") {
+    if (b.kind === "road") {
+      ctx.lineCap = "round";
+      ctx.strokeStyle = shade(0.22);
+      ctx.lineWidth = 8 * m;
+      ctx.stroke(path);
+      ctx.strokeStyle = theme.wax;
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 3.4 * m;
+      ctx.setLineDash([10 * m, 8 * m]);
+      ctx.stroke(path);
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = theme.wax;
+      for (const p of [pts[0], pts[pts.length - 1]]) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4.6 * m, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (b.kind === "stone") {
       ctx.save();
       ctx.translate(3 * m, 5 * m);
-      ctx.strokeStyle = "rgba(40, 25, 8, 0.24)";
+      ctx.strokeStyle = shade(0.24);
       ctx.lineWidth = 17 * m;
       ctx.stroke(path);
       ctx.restore();
-      ctx.strokeStyle = theme.ink;
+      ctx.strokeStyle = theme.seaInk;
       ctx.lineWidth = 1.4;
       for (let i = 2;i < pts.length - 1; i += 3) {
         const p = pts[i];
@@ -604,7 +704,7 @@
     } else if (b.kind === "rope") {
       ctx.save();
       ctx.translate(2.5 * m, 4.5 * m);
-      ctx.strokeStyle = "rgba(40, 25, 8, 0.2)";
+      ctx.strokeStyle = shade(0.2);
       ctx.lineWidth = 9 * m;
       ctx.stroke(path);
       ctx.restore();
@@ -623,6 +723,7 @@
         ctx.lineTo(p.x + p.nx * 5 * m, p.y + p.ny * 5 * m);
       }
       ctx.stroke();
+      ctx.strokeStyle = theme.seaInk;
       ctx.lineWidth = 0.9;
       ctx.globalAlpha = 0.7;
       for (const side of [-1, 1]) {
@@ -661,7 +762,7 @@
         ctx.save();
         ctx.translate(p.x + p.nx * (i % 3 - 1) * 2 * m, p.y + p.ny * (i % 3 - 1) * 2 * m);
         ctx.rotate(Math.atan2(p.ty, p.tx));
-        ctx.fillStyle = "rgba(40, 25, 8, 0.2)";
+        ctx.fillStyle = shade(0.2);
         ctx.beginPath();
         ctx.ellipse(2 * m, 3 * m, 6.5 * m * wobble, 4.4 * m, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -684,7 +785,8 @@
     ctx.translate(d.x, d.y);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = theme.ink;
+    const onWater = d.kind === "wave" || d.kind === "ship" || d.kind === "serpent";
+    ctx.strokeStyle = onWater ? theme.seaInk : theme.ink;
     switch (d.kind) {
       case "mountain": {
         const p1 = [-s * 0.25, -s * 0.7];
@@ -908,7 +1010,7 @@
         ctx.moveTo(-r, 0);
         ctx.quadraticCurveTo(hx - r * 0.4, -r * 1.6, hx - r * 1.5, -r * 1.5);
         ctx.stroke();
-        ctx.fillStyle = theme.ink;
+        ctx.fillStyle = theme.seaInk;
         ctx.beginPath();
         ctx.arc(hx - r * 1.5, -r * 1.5, r * 0.28, 0, Math.PI * 2);
         ctx.fill();
@@ -928,6 +1030,15 @@
     ctx.save();
     ctx.translate(x, y);
     ctx.lineJoin = "round";
+    if (theme.medallion) {
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.22, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(230, 220, 186, 0.94)";
+      ctx.fill();
+      ctx.strokeStyle = theme.frame;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
     ctx.strokeStyle = theme.ink;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -968,25 +1079,6 @@
     ctx.textBaseline = "alphabetic";
     ctx.fillText("N", 0, -r * 1.08);
     ctx.restore();
-  }
-
-  // src/domain/rng.ts
-  function hashString(text) {
-    let h = 2166136261;
-    for (let i = 0;i < text.length; i++) {
-      h ^= text.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    return h >>> 0;
-  }
-  function createRng(seed) {
-    let a = hashString(seed);
-    return () => {
-      a = a + 1831565813 | 0;
-      let t = Math.imul(a ^ a >>> 15, 1 | a);
-      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-      return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
   }
 
   // src/apps/web/render/paper.ts
@@ -1072,20 +1164,29 @@
     dpr = 1;
     paper;
     coastPaths = new Map;
+    continentPath;
     cellPaths = new Map;
     isletPaths;
     widths = new Map;
+    stars;
     constructor(canvas, model, camera) {
       this.canvas = canvas;
       this.model = model;
       this.camera = camera;
       this.ctx = canvas.getContext("2d");
       this.paper = this.ctx.createPattern(makePaperTile(), "repeat");
+      this.continentPath = pathOf(model.atlas.continent?.coast ?? []);
       for (const r of model.atlas.realms)
         this.coastPaths.set(r.id, pathOf(r.coast));
       for (const r of model.atlas.regions)
         this.cellPaths.set(r.id, pathOf(r.cell));
       this.isletPaths = model.atlas.islets.map(pathOf);
+      const rng = createRng("night-sky");
+      const { width: sw, height: sh } = model.atlas.world;
+      this.stars = Array.from({ length: 460 }, () => {
+        const big = rng() < 0.08;
+        return { x: 70 + rng() * (sw - 140), y: 70 + rng() * (sh - 140), r: big ? 1.8 + rng() * 1.4 : 0.6 + rng() * 1, a: 0.22 + rng() * 0.6 };
+      });
     }
     resize() {
       this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -1190,25 +1291,29 @@
       ctx.fillRect(0, 0, cam.width, cam.height);
       ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
       ctx.save();
-      ctx.shadowColor = "rgba(40, 25, 8, 0.5)";
+      ctx.shadowColor = theme.sheetShadow;
       ctx.shadowBlur = 26 * dpr;
       ctx.shadowOffsetY = 6 * dpr;
-      ctx.fillStyle = theme.paper;
+      ctx.fillStyle = theme.sea;
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
       const sheet = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.hypot(W, H) / 2);
-      sheet.addColorStop(0, theme.paperLight);
-      sheet.addColorStop(0.65, theme.paper);
-      sheet.addColorStop(1, theme.paperDark);
+      sheet.addColorStop(0, theme.seaLight);
+      sheet.addColorStop(0.65, theme.sea);
+      sheet.addColorStop(1, theme.seaDark);
       ctx.fillStyle = sheet;
       ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = "rgba(92, 140, 150, 0.2)";
-      ctx.fillRect(0, 0, W, H);
+      if (theme.wash) {
+        ctx.fillStyle = theme.wash;
+        ctx.fillRect(0, 0, W, H);
+      }
       const deep = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.hypot(W, H) / 2);
-      deep.addColorStop(0, "rgba(60, 110, 130, 0)");
-      deep.addColorStop(1, "rgba(60, 110, 130, 0.22)");
+      deep.addColorStop(0, theme.vignetteInner);
+      deep.addColorStop(1, theme.vignetteOuter);
       ctx.fillStyle = deep;
       ctx.fillRect(0, 0, W, H);
+      if (theme.sky)
+        this.drawSky(W);
       this.drawRhumbs(W, H, atlas.furniture.compass);
       this.drawFrame(W, H);
       this.drawLanes(L.lanes);
@@ -1219,8 +1324,10 @@
       }
       ctx.globalAlpha = 1;
       this.drawIslets();
+      this.drawContinentBase();
       for (const realm of atlas.realms)
         this.drawRealmLand(realm, L.glyph, visible);
+      this.drawContinentFinish();
       this.drawBridges(visible);
       this.drawFog();
       const { cartouche: c, compass } = atlas.furniture;
@@ -1249,15 +1356,55 @@
       this.drawNoteLabels(L.noteLabel);
       this.drawFrontiers(L);
     }
+    drawSky(W) {
+      const { ctx } = this;
+      for (const st of this.stars) {
+        ctx.globalAlpha = st.a;
+        ctx.fillStyle = "#e8eeff";
+        ctx.beginPath();
+        ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+        ctx.fill();
+        if (st.r > 1.7) {
+          ctx.strokeStyle = "#e8eeff";
+          ctx.lineWidth = 0.9;
+          ctx.beginPath();
+          ctx.moveTo(st.x - st.r * 3.2, st.y);
+          ctx.lineTo(st.x + st.r * 3.2, st.y);
+          ctx.moveTo(st.x, st.y - st.r * 3.2);
+          ctx.lineTo(st.x, st.y + st.r * 3.2);
+          ctx.stroke();
+        }
+      }
+      ctx.globalAlpha = 1;
+      const mx = W - 330;
+      const my = 250;
+      const halo = ctx.createRadialGradient(mx, my, 20, mx, my, 220);
+      halo.addColorStop(0, "rgba(190, 210, 255, 0.26)");
+      halo.addColorStop(1, "rgba(190, 210, 255, 0)");
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(mx, my, 220, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(mx, my, 52, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.beginPath();
+      ctx.arc(mx, my, 52, 0, Math.PI * 2);
+      ctx.arc(mx - 20, my - 8, 46, 0, Math.PI * 2);
+      ctx.fillStyle = "#f3eed2";
+      ctx.fill("evenodd");
+      ctx.restore();
+    }
     drawRhumbs(W, H, compass) {
       const { ctx } = this;
       ctx.save();
       ctx.beginPath();
       ctx.rect(62, 62, W - 124, H - 124);
       ctx.clip();
-      ctx.strokeStyle = theme.inkSoft;
+      ctx.strokeStyle = theme.seaLine;
       ctx.lineWidth = 1.1;
-      ctx.globalAlpha = 0.09;
+      ctx.globalAlpha = theme.rhumbAlpha;
       const hubs = [compass, { x: W * 0.5, y: H * 0.5 }, { x: W * 0.18, y: H * 0.82 }];
       for (const hub of hubs) {
         for (let i = 0;i < 32; i++) {
@@ -1273,7 +1420,7 @@
     drawFrame(W, H) {
       const { ctx } = this;
       const band = 16;
-      ctx.fillStyle = theme.ink;
+      ctx.fillStyle = theme.frame;
       for (let i = 0, x = 46;x < W - 46; i++, x += band) {
         if (i % 2 === 0) {
           const w = Math.min(band, W - 46 - x);
@@ -1288,7 +1435,7 @@
           ctx.fillRect(W - 46 - band, y, band, h);
         }
       }
-      ctx.strokeStyle = theme.ink;
+      ctx.strokeStyle = theme.frame;
       ctx.lineWidth = 4;
       ctx.strokeRect(46, 46, W - 92, H - 92);
       ctx.lineWidth = 1.5;
@@ -1302,8 +1449,8 @@
       const { ctx, model } = this;
       ctx.save();
       ctx.lineCap = "round";
-      ctx.strokeStyle = theme.inkSoft;
-      ctx.globalAlpha = 0.32 * alpha;
+      ctx.strokeStyle = theme.seaLine;
+      ctx.globalAlpha = theme.laneAlpha * alpha;
       for (const lane of model.lanes) {
         const a = model.realms.get(lane.a).center;
         const b = model.realms.get(lane.b).center;
@@ -1325,8 +1472,8 @@
       const { ctx } = this;
       ctx.save();
       ctx.lineJoin = "round";
-      for (const [w, a] of [[96, 0.07], [64, 0.1], [36, 0.13], [16, 0.16]]) {
-        ctx.strokeStyle = `rgba(170, 214, 206, ${a})`;
+      for (const [w, a] of theme.shallows) {
+        ctx.strokeStyle = `rgba(${theme.shallowRGB}, ${a})`;
         ctx.lineWidth = w;
         ctx.stroke(path);
       }
@@ -1340,7 +1487,7 @@
       for (const path of this.isletPaths) {
         ctx.save();
         ctx.translate(4, 5);
-        ctx.fillStyle = "rgba(40, 25, 8, 0.22)";
+        ctx.fillStyle = shade(0.22);
         ctx.fill(path);
         ctx.restore();
         ctx.fillStyle = theme.land;
@@ -1356,15 +1503,14 @@
         ctx.stroke(path);
       }
     }
-    drawRealmLand(realm, glyphAlpha, visible) {
-      const { ctx, model, state } = this;
-      const coast = this.coastPaths.get(realm.id);
-      const c = realm.center;
+    drawContinentBase() {
+      const { ctx, model } = this;
+      const c = model.atlas.continent?.center ?? { x: 0, y: 0 };
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
-      this.shallows(coast);
-      ctx.strokeStyle = theme.inkSoft;
-      [[1.05, 0.34], [1.1, 0.22], [1.16, 0.12]].forEach(([k, a], i) => {
+      this.shallows(this.continentPath);
+      ctx.strokeStyle = theme.seaLine;
+      [[1.03, 0.34], [1.065, 0.22], [1.1, 0.12]].forEach(([k, a], i) => {
         ctx.save();
         ctx.translate(c.x, c.y);
         ctx.scale(k, k);
@@ -1372,25 +1518,56 @@
         ctx.globalAlpha = a;
         ctx.lineWidth = (i === 0 ? 1.6 : 1.2) / k;
         ctx.setLineDash(i === 0 ? [] : [14, 10]);
-        ctx.stroke(coast);
+        ctx.stroke(this.continentPath);
         ctx.restore();
       });
       ctx.save();
-      ctx.strokeStyle = "rgba(111, 82, 54, 0.07)";
+      ctx.strokeStyle = theme.haze;
       ctx.lineWidth = 40;
-      ctx.stroke(coast);
+      ctx.stroke(this.continentPath);
       ctx.restore();
       ctx.save();
       ctx.translate(6, 8);
-      ctx.fillStyle = "rgba(40, 25, 8, 0.24)";
-      ctx.fill(coast);
+      ctx.fillStyle = shade(0.24);
+      ctx.fill(this.continentPath);
       ctx.restore();
+    }
+    drawContinentFinish() {
+      const { ctx, model } = this;
+      const c = model.atlas.continent?.center ?? { x: 0, y: 0 };
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.save();
+      ctx.clip(this.continentPath);
+      ctx.strokeStyle = theme.inkSoft;
+      [[0.93, 0.2], [0.86, 0.14], [0.79, 0.1]].forEach(([k, a]) => {
+        ctx.save();
+        ctx.translate(c.x, c.y);
+        ctx.scale(k, k);
+        ctx.translate(-c.x, -c.y);
+        ctx.globalAlpha = a;
+        ctx.lineWidth = 1.2 / k;
+        ctx.setLineDash([10, 7]);
+        ctx.stroke(this.continentPath);
+        ctx.restore();
+      });
+      ctx.restore();
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 3;
+      ctx.stroke(this.continentPath);
+    }
+    drawRealmLand(realm, glyphAlpha, visible) {
+      const { ctx, model, state } = this;
+      const coast = this.coastPaths.get(realm.id);
+      const c = realm.center;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
       const b = model.realmBounds(realm);
       const reach = Math.max(b.maxX - b.minX, b.maxY - b.minY) / 2;
       const paint = ctx.createRadialGradient(c.x, c.y, reach * 0.1, c.x, c.y, reach);
-      paint.addColorStop(0, theme.paperLight);
+      paint.addColorStop(0, theme.landLight);
       paint.addColorStop(0.6, theme.land);
-      paint.addColorStop(1, "#e2cf9c");
+      paint.addColorStop(1, theme.landEdge);
       ctx.fillStyle = paint;
       ctx.fill(coast);
       for (const id of realm.regionIds) {
@@ -1408,18 +1585,6 @@
       ctx.strokeStyle = "rgba(63, 43, 26, 0.12)";
       ctx.lineWidth = 22;
       ctx.stroke(coast);
-      ctx.strokeStyle = theme.inkSoft;
-      [[0.93, 0.2], [0.86, 0.14], [0.79, 0.1]].forEach(([k, a]) => {
-        ctx.save();
-        ctx.translate(c.x, c.y);
-        ctx.scale(k, k);
-        ctx.translate(-c.x, -c.y);
-        ctx.globalAlpha = a;
-        ctx.lineWidth = 1.2 / k;
-        ctx.setLineDash([10, 7]);
-        ctx.stroke(coast);
-        ctx.restore();
-      });
       ctx.restore();
       ctx.strokeStyle = theme.ink;
       ctx.lineWidth = 1.6;
@@ -1436,9 +1601,13 @@
           ctx.stroke(this.cellPaths.get(id));
         }
       }
-      ctx.strokeStyle = theme.ink;
-      ctx.lineWidth = state.selectedRealm === realm.id ? 4.2 : 2.4;
+      ctx.strokeStyle = state.selectedRealm === realm.id ? theme.gold : theme.ink;
+      ctx.globalAlpha = state.selectedRealm === realm.id ? 1 : 0.8;
+      ctx.lineWidth = state.selectedRealm === realm.id ? 5 : 3.6;
+      ctx.setLineDash(state.selectedRealm === realm.id ? [] : [26, 7, 5, 7]);
       ctx.stroke(coast);
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
       ctx.globalAlpha = glyphAlpha;
       for (const d of model.atlas.decor) {
         if ((d.kind === "mountain" || d.kind === "hill" || d.kind === "tree") && visible(d.x, d.y, 40)) {
@@ -1492,8 +1661,8 @@
       const { ctx, model } = this;
       for (const f of model.atlas.frontiers) {
         const grad = ctx.createRadialGradient(f.x, f.y, 10, f.x, f.y, 110);
-        grad.addColorStop(0, "rgba(120, 105, 80, 0.28)");
-        grad.addColorStop(1, "rgba(120, 105, 80, 0)");
+        grad.addColorStop(0, `rgba(${theme.fogRGB}, 0.28)`);
+        grad.addColorStop(1, `rgba(${theme.fogRGB}, 0)`);
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(f.x, f.y, 110, 0, Math.PI * 2);
@@ -1534,7 +1703,7 @@
       if ("letterSpacing" in ctx && opts.spacing)
         ctx.letterSpacing = opts.spacing;
       ctx.lineJoin = "round";
-      ctx.strokeStyle = theme.halo;
+      ctx.strokeStyle = opts.haloColor ?? theme.halo;
       ctx.lineWidth = opts.halo ?? 4;
       ctx.strokeText(text, x, y);
       ctx.fillStyle = color;
@@ -1789,7 +1958,7 @@
         if (L.regionLabel > 0.03) {
           const size = clamp2(10 + cam.s * 4, 11, 14);
           const font = `500 ${size}px ${theme.display}`;
-          const lines = this.wrap(region.name.toUpperCase(), font, 150, 3);
+          const lines = this.wrap((region.placeName ?? region.name).toUpperCase(), font, 150, 3);
           lines.forEach((line, i) => {
             this.text(line, x, y + r + 11 + i * (size + 2), font, theme.ink, {
               align: "center",
@@ -1798,6 +1967,14 @@
               spacing: "0.6px"
             });
           });
+          const topicAlpha = smooth(0.5, 0.75, cam.s) * L.regionLabel;
+          if (topicAlpha > 0.03 && region.placeName !== region.name) {
+            this.text(shorten(region.name, 38), x, y + r + 11 + lines.length * (size + 2) + 3, `italic ${size - 1}px ${theme.body}`, theme.inkSoft, {
+              align: "center",
+              halo: 4,
+              alpha: topicAlpha
+            });
+          }
         }
       }
     }
@@ -1878,7 +2055,7 @@
         ctx.fillText("?", x, y + 1);
         ctx.restore();
         if (labelAlpha > 0.03) {
-          this.text(shorten(f.title, 34), x + r + 6, y, `italic 14px ${theme.body}`, theme.inkSoft, { halo: 4, alpha: labelAlpha });
+          this.text(shorten(f.title, 34), x + r + 6, y, `italic 14px ${theme.body}`, theme.seaText, { halo: 5, haloColor: theme.seaHalo, alpha: labelAlpha });
         }
       }
     }
@@ -2152,8 +2329,8 @@
       }
     }
     setBar(crumb) {
-      const back = this.handlers.canGoBack() ? h("button", { class: "panel__icon", type: "button", "data-act": "back", "aria-label": "Back" }, "←") : null;
-      this.bar.append(...back ? [back] : [], h("div", { class: "panel__crumb" }, crumb), h("button", { class: "panel__icon", type: "button", "data-act": "close", "aria-label": "Close panel" }, "×"));
+      const back = this.handlers.canGoBack() ? h("button", { class: "panel__icon", type: "button", "data-act": "back", "data-icon": "back", "aria-label": "Back" }) : null;
+      this.bar.append(...back ? [back] : [], h("div", { class: "panel__crumb" }, crumb), h("button", { class: "panel__icon", type: "button", "data-act": "close", "data-icon": "close", "aria-label": "Close panel" }));
     }
     put(...children) {
       this.scroll.append(...children.filter((c) => c !== null));
@@ -2166,13 +2343,13 @@
     }
     noteRow(n, withBlurb = false) {
       const region = this.model.regions.get(n.regionId);
-      return this.row("note", n.id, n.title, withBlurb && n.blurb ? n.blurb : region.name, region.sigil);
+      return this.row("note", n.id, n.title, withBlurb && n.blurb ? n.blurb : region.placeName, region.sigil);
     }
     list(items) {
       return h("ul", { class: "list" }, ...items.map((i) => h("li", null, i)));
     }
     regionRow(region) {
-      return this.row("region", region.id, region.name, `${region.npc.name}, ${region.npc.epithet}`, region.sigil, String(region.noteIds.length));
+      return this.row("region", region.id, region.placeName, `${region.name} · ${region.npc.name}`, region.sigil, String(region.noteIds.length));
     }
     renderHome(tab) {
       const { atlas } = this.model;
@@ -2205,7 +2382,7 @@
       if (!note)
         return null;
       const region = this.model.regions.get(note.regionId);
-      return h("div", { class: "today" }, h("p", { class: "today__label" }, "Today's topic"), this.row("note", note.id, note.title, `${region.name}${note.blurb ? ` · ${note.blurb}` : ""}`, "\uD83E\uDDED"));
+      return h("div", { class: "today" }, h("p", { class: "today__label" }, "Today's topic"), this.row("note", note.id, note.title, `${region.placeName}${note.blurb ? ` · ${note.blurb}` : ""}`, "\uD83E\uDDED"));
     }
     renderNote(id) {
       const note = this.model.notes.get(id);
@@ -2213,9 +2390,9 @@
         return this.renderMissing();
       const region = this.model.regions.get(note.regionId);
       const realm = this.model.realms.get(note.realmId);
-      this.setBar(h("span", null, this.linkBtn("realm", realm.id, realm.fantasyName), " › ", this.linkBtn("region", region.id, region.name)));
+      this.setBar(h("span", null, this.linkBtn("realm", realm.id, realm.fantasyName), " › ", this.linkBtn("region", region.id, region.placeName)));
       const onRoads = this.model.roadsByNote.get(id) ?? [];
-      this.put(h("h2", null, note.title), note.blurb ? h("p", { class: "lede" }, note.blurb) : null, note.group ? h("p", { class: "row__sub" }, `Within ${region.name}: ${note.group}`) : null, note.tags.length ? h("div", { class: "chips" }, ...note.tags.map((t) => h("span", { class: "chip" }, t))) : null, onRoads.length ? h("div", { class: "chips" }, ...onRoads.map(({ road, step }) => h("button", { class: "chip", type: "button", "data-act": "road", "data-id": road.id, "data-step": String(step) }, `Road ${road.number}, stop ${step + 1}`))) : null);
+      this.put(h("h2", null, note.title), note.blurb ? h("p", { class: "lede" }, note.blurb) : null, note.group ? h("p", { class: "row__sub" }, `Within ${region.placeName}: ${note.group}`) : null, note.tags.length ? h("div", { class: "chips" }, ...note.tags.map((t) => h("span", { class: "chip" }, t))) : null, onRoads.length ? h("div", { class: "chips" }, ...onRoads.map(({ road, step }) => h("button", { class: "chip", type: "button", "data-act": "road", "data-id": road.id, "data-step": String(step) }, `Road ${road.number}, stop ${step + 1}`))) : null);
       const body = h("div", { class: "note-body" });
       if (note.locked)
         body.append(h("p", { class: "lede" }, "The full text of this note is kept private. Its place on the map and its connections are shown here."));
@@ -2235,8 +2412,8 @@
       if (!region)
         return this.renderMissing();
       const realm = this.model.realms.get(region.realmId);
-      this.setBar(h("span", null, this.linkBtn("realm", realm.id, realm.fantasyName), " › ", region.name));
-      this.put(h("div", { class: "npc" }, h("div", { class: "npc__seal", "aria-hidden": "true" }, region.sigil), h("div", null, h("h2", { class: "npc__name" }, region.npc.name), h("p", { class: "npc__epithet" }, region.npc.epithet))), h("div", { class: "speech" }, `“${region.npc.greeting}”`), h("p", { class: "row__sub" }, `Keeper of ${region.name}: ${plural(region.noteIds.length, "topic")}.`));
+      this.setBar(h("span", null, this.linkBtn("realm", realm.id, realm.fantasyName), " › ", region.placeName));
+      this.put(h("div", { class: "npc" }, h("div", { class: "npc__seal", "aria-hidden": "true" }, region.sigil), h("div", null, h("h2", { class: "npc__name" }, region.npc.name), h("p", { class: "npc__epithet" }, region.npc.epithet))), h("div", { class: "speech" }, `“${region.npc.greeting}”`), h("p", { class: "row__sub" }, `${region.name}: ${plural(region.noteIds.length, "topic")}. ${region.npc.name} keeps this land.`));
       const byGroup = new Map;
       for (const nid of region.noteIds) {
         const n = this.model.notes.get(nid);
@@ -2247,7 +2424,7 @@
       }
       const neighbours = this.model.strongestNeighbours(id, 4);
       if (neighbours.length) {
-        this.put(h("h3", null, "Whispers from neighbouring lands"), this.list(neighbours.map(({ region: r, count }) => this.row("region", r.id, r.name, `${r.npc.name}. ${plural(count, "link")} between our topics`, r.sigil))));
+        this.put(h("h3", null, "Whispers from neighbouring lands"), this.list(neighbours.map(({ region: r, count }) => this.row("region", r.id, r.placeName, `${r.name} · ${plural(count, "link")} between our topics`, r.sigil))));
       }
       this.scroll.scrollTop = 0;
     }
@@ -2257,21 +2434,19 @@
         return this.renderMissing();
       const a = this.model.regions.get(bridge.a);
       const b = this.model.regions.get(bridge.b);
-      this.setBar("Bridge");
-      const style = { stone: "A stone bridge: a strong, well-worn tie.", rope: "A plank-and-rope bridge: a steady tie.", stones: "Stepping stones: a light tie." }[bridge.kind];
-      this.put(h("h2", null, `${a.name} ↔ ${b.name}`), h("p", { class: "lede" }, `${style} ${plural(bridge.count, "note link")} cross here, each one a place where the notes on one shore lean on the other.`), this.list([this.regionRow(a), this.regionRow(b)]), h("h3", null, `The links (${bridge.count})`), h("div", null, ...bridge.links.map(({ from, to }) => {
+      this.setBar(bridge.kind === "road" ? "Road" : "Bridge");
+      const style = {
+        stone: "A stone bridge: a strong, well-worn tie.",
+        rope: "A plank-and-rope bridge: a steady tie.",
+        stones: "Stepping stones: a light tie.",
+        road: "A road over the border: a path worn by the traffic between two realms."
+      }[bridge.kind];
+      this.put(h("h2", null, `${a.placeName} ↔ ${b.placeName}`), h("p", { class: "lede" }, `${style} ${plural(bridge.count, "note link")} cross here, each one a place where the notes on one shore lean on the other.`), this.list([this.regionRow(a), this.regionRow(b)]), h("h3", null, `The links (${bridge.count})`), h("div", null, ...bridge.links.map(({ from, to }) => {
         const f = this.model.notes.get(from);
         const t = this.model.notes.get(to);
-        const chip = (n) => h("button", { class: "chip", type: "button", "data-act": "note", "data-id": n.id }, n.title);
-        return h("div", { class: "bridge-link" }, chip(f), h("span", { class: "bridge-link__arrow", "aria-hidden": "true" }, "→"), chip(t));
+        const note = (n) => h("button", { class: "bridge-note", type: "button", "data-act": "note", "data-id": n.id }, n.title);
+        return h("div", { class: "bridge-link" }, note(f), h("span", { class: "bridge-link__arrow", "data-icon": "down", "aria-label": "leads to", role: "img" }), note(t));
       })));
-      const bridges = this.model.bridges.filter((br) => br.a === id || br.b === id);
-      if (bridges.length) {
-        this.put(h("h3", null, "Bridges"), this.list(bridges.map((br) => {
-          const other = this.model.regions.get(br.a === id ? br.b : br.a);
-          return this.row("bridge", br.id, `To ${other.name}`, `${plural(br.count, "link")} cross this bridge`, "\uD83C\uDF09");
-        })));
-      }
       this.scroll.scrollTop = 0;
     }
     renderRealm(id) {
@@ -2283,9 +2458,9 @@
       this.put(h("h2", null, realm.fantasyName), h("p", { class: "lede" }, `${realm.name}. ${realm.epithet[0].toUpperCase()}${realm.epithet.slice(1)}.`), h("p", { class: "row__sub" }, `${plural(realm.regionIds.length, "region")}, ${plural(count, "note")}.`), this.list(realm.regionIds.map((r) => this.regionRow(this.model.regions.get(r)))));
       const lanes = this.model.lanes.filter((l) => l.a === id || l.b === id).sort((a, b) => b.count - a.count);
       if (lanes.length) {
-        this.put(h("h3", null, "Sea lanes"), this.list(lanes.map((l) => {
+        this.put(h("h3", null, "Neighbouring realms"), this.list(lanes.map((l) => {
           const other = this.model.realms.get(l.a === id ? l.b : l.a);
-          return this.row("realm", other.id, other.fantasyName, `${plural(l.count, "link")} cross the water`, "⛵");
+          return this.row("realm", other.id, other.fantasyName, `${plural(l.count, "link")} cross the border`, "\uD83E\uDDED");
         })));
       }
       this.scroll.scrollTop = 0;
@@ -2300,7 +2475,7 @@
       this.put(h("h2", null, road.title), road.subtitle ? h("p", { class: "lede" }, road.subtitle) : null, h("div", { class: "stepper" }, step < 0 ? stepBtn("Begin the journey", 0, !road.steps.length) : stepBtn("← Previous", step - 1, step <= 0, true), step >= 0 ? stepBtn(step >= last ? "Journey's end" : "Next stop →", Math.min(step + 1, last), step >= last) : null), h("ol", { class: "list" }, ...road.steps.map((nid, i) => {
         const n = this.model.notes.get(nid);
         const region = this.model.regions.get(n.regionId);
-        return h("li", { class: "step", "aria-current": i === step ? "step" : undefined }, h("span", { class: "step__n" }, String(i + 1)), h("div", { style: "flex:1;min-width:0" }, this.row("road", id, n.title, region.name, undefined, undefined, i)));
+        return h("li", { class: "step", "aria-current": i === step ? "step" : undefined }, h("span", { class: "step__n" }, String(i + 1)), h("div", { style: "flex:1;min-width:0" }, this.row("road", id, n.title, region.placeName, undefined, undefined, i)));
       })));
       if (step >= 0) {
         const n = this.model.notes.get(road.steps[step]);
@@ -2433,12 +2608,15 @@
       for (const n of atlas.notes) {
         const s = this.score(q, n.title, n.tags.join(" "), n.blurb);
         if (s)
-          found.push({ kind: "Note", label: n.title, sub: this.model.regions.get(n.regionId).name, view: { kind: "note", id: n.id }, score: s });
+          found.push({ kind: "Note", label: n.title, sub: this.model.regions.get(n.regionId).placeName, view: { kind: "note", id: n.id }, score: s });
       }
       for (const r of atlas.regions) {
-        const s = this.score(q, r.name, r.npc.name, r.npc.epithet);
+        const place = this.score(q, r.placeName, r.name);
+        if (place)
+          found.push({ kind: "Place", label: r.placeName, sub: r.name, view: { kind: "region", id: r.id }, score: place + 3 });
+        const s = this.score(q, r.npc.name, r.npc.epithet);
         if (s)
-          found.push({ kind: "Keeper", label: r.npc.name, sub: `${r.npc.epithet}, ${r.name}`, view: { kind: "region", id: r.id }, score: s + 2 });
+          found.push({ kind: "Keeper", label: r.npc.name, sub: `${r.npc.epithet}, ${r.placeName}`, view: { kind: "region", id: r.id }, score: s + 2 });
       }
       for (const r of atlas.realms) {
         const s = this.score(q, r.fantasyName, r.name);
@@ -2566,7 +2744,11 @@
 
   // src/apps/web/main.ts
   cleanRefreshParam();
+  var initialMode = document.documentElement.dataset.theme === "day" ? "day" : "night";
+  applyTheme(initialMode);
   var atlas = window.__ATLAS__;
+  if (!atlas.continent)
+    console.warn("This atlas data predates the continent layout. Run `bun run build` to regenerate it.");
   var model = new AtlasModel(atlas);
   var canvas = document.getElementById("map");
   var panelEl = document.getElementById("panel");
@@ -2809,12 +2991,12 @@
     switch (hit.kind) {
       case "note": {
         const n = model.notes.get(hit.id);
-        return { title: n.title, sub: model.regions.get(n.regionId).name };
+        return { title: n.title, sub: model.regions.get(n.regionId).placeName };
       }
       case "seal":
       case "region": {
         const r = model.regions.get(hit.id);
-        return { title: r.name, sub: `${r.npc.name}, ${r.npc.epithet}` };
+        return { title: r.placeName, sub: `${r.name} · ${r.npc.name}` };
       }
       case "realm": {
         const r = model.realms.get(hit.id);
@@ -2824,8 +3006,8 @@
         return { title: model.frontiers.get(hit.id).title, sub: "Unmapped waters" };
       case "bridge": {
         const b = model.bridgesById.get(hit.id);
-        const n = (id) => model.regions.get(id).name;
-        return { title: `${n(b.a)} ↔ ${n(b.b)}`, sub: `Bridge · ${b.count} links cross here` };
+        const n = (id) => model.regions.get(id).placeName;
+        return { title: `${n(b.a)} ↔ ${n(b.b)}`, sub: `${b.kind === "road" ? "Road" : "Bridge"} · ${b.count} links cross here` };
       }
     }
   }
@@ -2854,6 +3036,17 @@
   });
   document.getElementById("zoom-in").addEventListener("click", () => camera.zoomCentre(1.6));
   document.getElementById("zoom-out").addEventListener("click", () => camera.zoomCentre(1 / 1.6));
+  function setMode(mode) {
+    document.documentElement.dataset.theme = mode;
+    applyTheme(mode);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", mode === "night" ? "#0b1424" : "#8c2f2b");
+    try {
+      localStorage.setItem("atlas-theme", mode);
+    } catch {}
+    dirty = true;
+  }
+  setMode(initialMode);
+  document.getElementById("theme").addEventListener("click", () => setMode(document.documentElement.dataset.theme === "night" ? "day" : "night"));
   document.getElementById("refresh").addEventListener("click", (e) => void refreshApp(e.currentTarget));
   document.getElementById("zoom-home").addEventListener("click", () => camera.flyTo(camera.homeView(), 900));
   document.getElementById("menu").addEventListener("click", () => panelOpen ? closePanel() : go({ kind: "home", tab: "lands" }, { fly: false }));
