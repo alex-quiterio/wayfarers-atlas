@@ -23,6 +23,8 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  /* No pull-to-refresh or rubber-banding while panning the map. */
+  overscroll-behavior: none;
   background: var(--table);
   color: var(--ink);
   font-family: var(--font-body);

@@ -1067,6 +1067,7 @@
     model;
     camera;
     state = emptyState();
+    touch = false;
     ctx;
     dpr = 1;
     paper;
@@ -1105,11 +1106,11 @@
       const L = lod(cam.s);
       for (const f of this.model.atlas.frontiers) {
         const [x, y] = cam.toScreen(f.x, f.y);
-        if (Math.hypot(x - sx, y - sy) <= 20)
+        if (Math.hypot(x - sx, y - sy) <= (this.touch ? 28 : 20))
           return { kind: "frontier", id: f.id };
       }
       if (L.seal > 0.4) {
-        const r = this.sealRadius() + 4;
+        const r = this.sealRadius() + (this.touch ? 10 : 4);
         for (const region of this.model.atlas.regions) {
           const [x, y] = cam.toScreen(region.center.x, region.center.y);
           if (Math.hypot(x - sx, y - sy) <= r)
@@ -1117,7 +1118,7 @@
         }
       }
       let best = null;
-      let bestD = this.dotRadius() + 6;
+      let bestD = this.dotRadius() + (this.touch ? 14 : 6);
       for (const n of this.model.atlas.notes) {
         const [x, y] = cam.toScreen(n.x, n.y);
         const d = Math.hypot(x - sx, y - sy);
@@ -1151,10 +1152,10 @@
     bridgeAt(sx, sy) {
       const cam = this.camera;
       let best = null;
-      let bestD = 12 + this.bridgeThickness() * 3;
+      let bestD = (this.touch ? 20 : 12) + this.bridgeThickness() * 3;
       for (const b of this.model.bridges) {
         const [mx, my] = cam.toScreen(...Object.values(bridgePoint(b, 0.5)));
-        if (Math.hypot(mx - sx, my - sy) <= 15)
+        if (Math.hypot(mx - sx, my - sy) <= (this.touch ? 24 : 15))
           return b.id;
         let prev = null;
         for (let i = 0;i <= 24; i++) {
@@ -1922,6 +1923,25 @@
     return null;
   }
 
+  // src/domain/dailyTopic.ts
+  function dayNumber(year, month, day) {
+    return Math.floor(Date.UTC(year, month, day) / 86400000);
+  }
+  function pickDailyTopic(noteIds, day) {
+    const ids = [...noteIds].sort();
+    const total = ids.length;
+    if (total === 0)
+      throw new Error("dailyTopic: there are no notes to pick from");
+    const cycle = Math.floor(day / total);
+    const position = (day % total + total) % total;
+    const rng = createRng(`daily/${cycle}`);
+    for (let i = total - 1;i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+    return { id: ids[position], position, total, cycle };
+  }
+
   // src/apps/web/ui/dom.ts
   function h(tag, attrs = null, ...children) {
     const el = document.createElement(tag);
@@ -2071,13 +2091,15 @@
     handlers;
     scroll;
     bar;
+    grip;
     constructor(root, model, handlers) {
       this.root = root;
       this.model = model;
       this.handlers = handlers;
+      this.grip = h("div", { class: "panel__grip", role: "button", "aria-label": "Drag to resize the panel", tabindex: "-1" });
       this.bar = h("div", { class: "panel__bar" });
       this.scroll = h("div", { class: "panel__scroll" });
-      root.append(this.bar, this.scroll);
+      root.append(this.grip, this.bar, this.scroll);
       root.addEventListener("click", (e) => this.onClick(e));
     }
     onClick(e) {
@@ -2162,7 +2184,7 @@
       ].map(([id, label]) => h("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(tab === id), "data-act": "tab", "data-id": id }, label)));
       const intro = h("p", { class: "lede" }, `${atlas.notes.length} notes across ${atlas.realms.length} realms. Tap a seal to meet the keeper of a region, follow a road to read across realms, and look for the ? marks at the edge of the sea: they are the questions not yet written.`);
       const hint = this.handlers.installHint();
-      this.put(h("h2", null, atlas.title), intro, hint ? h("p", { class: "install-hint" }, `\uD83D\uDCF2 ${hint}`) : null, tabs);
+      this.put(h("h2", null, atlas.title), intro, this.todayCard(), hint ? h("p", { class: "install-hint" }, `\uD83D\uDCF2 ${hint}`) : null, tabs);
       if (tab === "lands") {
         for (const realm of atlas.realms) {
           this.put(h("h3", null, this.linkBtn("realm", realm.id, realm.fantasyName)), h("p", { class: "lede" }, `${realm.name}. ${realm.epithet[0].toUpperCase()}${realm.epithet.slice(1)}.`), this.list(realm.regionIds.map((id) => this.regionRow(this.model.regions.get(id)))));
@@ -2172,6 +2194,18 @@
       } else {
         this.put(h("p", { class: "lede" }, "Threads the notes point toward but do not yet hold. Questions, not tasks."), this.list(atlas.frontiers.map((f) => this.row("frontier", f.id, f.title, undefined, "?"))));
       }
+    }
+    todayCard() {
+      const now = new Date;
+      const ids = this.model.atlas.notes.map((n) => n.id);
+      if (!ids.length)
+        return null;
+      const pick = pickDailyTopic(ids, dayNumber(now.getFullYear(), now.getMonth(), now.getDate()));
+      const note = this.model.notes.get(pick.id);
+      if (!note)
+        return null;
+      const region = this.model.regions.get(note.regionId);
+      return h("div", { class: "today" }, h("p", { class: "today__label" }, "Today's topic"), this.row("note", note.id, note.title, `${region.name}${note.blurb ? ` · ${note.blurb}` : ""}`, "\uD83E\uDDED"));
     }
     renderNote(id) {
       const note = this.model.notes.get(id);
@@ -2453,6 +2487,59 @@
     }
   }
 
+  // src/apps/web/ui/sheet.ts
+  function attachSheet(grip, panel, opts) {
+    let dragging = false;
+    let startY = 0;
+    let startH = 0;
+    let lastY = 0;
+    let lastT = 0;
+    let velocity = 0;
+    let moved = 0;
+    grip.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      startY = lastY = e.clientY;
+      lastT = performance.now();
+      startH = opts.get();
+      moved = 0;
+      velocity = 0;
+      grip.setPointerCapture(e.pointerId);
+      panel.classList.add("is-dragging-sheet");
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!dragging)
+        return;
+      const now = performance.now();
+      if (now > lastT)
+        velocity = (lastY - e.clientY) / (now - lastT);
+      lastY = e.clientY;
+      lastT = now;
+      moved = Math.max(moved, Math.abs(e.clientY - startY));
+      const snaps = opts.snaps();
+      const lo = Math.min(...snaps);
+      const hi = Math.max(...snaps);
+      opts.set(Math.max(lo, Math.min(hi, startH + (startY - e.clientY))), false);
+    });
+    const end = () => {
+      if (!dragging)
+        return;
+      dragging = false;
+      panel.classList.remove("is-dragging-sheet");
+      const snaps = [...opts.snaps()].sort((a, b) => a - b);
+      const current = opts.get();
+      if (moved < 6) {
+        const taller = snaps.find((s) => s > current + 8);
+        opts.set(taller ?? snaps[0], true);
+        return;
+      }
+      const projected = current + velocity * 180;
+      const target = snaps.reduce((best, s) => Math.abs(s - projected) < Math.abs(best - projected) ? s : best, snaps[0]);
+      opts.set(target, true);
+    };
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+  }
+
   // src/apps/web/ui/view.ts
   function sameView(a, b) {
     return JSON.stringify(a) === JSON.stringify(b);
@@ -2490,6 +2577,7 @@
     heading.textContent = atlas.title;
   var camera = new Camera(atlas.world);
   var scene = new Scene(canvas, model, camera);
+  scene.touch = window.matchMedia("(pointer: coarse)").matches;
   var isPhone = () => window.matchMedia("(max-width: 760px)").matches;
   var dirty = true;
   camera.onChange = () => dirty = true;
@@ -2503,21 +2591,88 @@
     canGoBack: () => stack.length > 0,
     installHint
   });
+  var SHEET_NAMES = ["peek", "half", "full"];
+  var sheetName = "half";
+  var sheetDrag = null;
+  function sheetSnaps() {
+    const top = document.querySelector(".topbar")?.offsetHeight ?? 56;
+    return [112, Math.round(window.innerHeight * 0.52), Math.max(240, window.innerHeight - top - 16)];
+  }
+  var sheetHeight = () => sheetDrag ?? sheetSnaps()[SHEET_NAMES.indexOf(sheetName)];
+  function paintSheet() {
+    document.documentElement.style.setProperty("--sheet-h", `${sheetHeight()}px`);
+  }
+  function setSheet(name) {
+    sheetName = name;
+    sheetDrag = null;
+    updateInsets();
+  }
   function updateInsets() {
     if (!panelOpen)
       return camera.setInsets(0, 0);
     if (isPhone()) {
-      const sheet = Math.round(window.innerHeight * 0.52) + 8;
-      document.documentElement.style.setProperty("--sheet-h", `${sheet - 8}px`);
-      camera.setInsets(0, sheet);
+      paintSheet();
+      camera.setInsets(0, sheetHeight() + 8);
     } else {
-      camera.setInsets(444, 0);
+      camera.setInsets(Math.round(panelEl.getBoundingClientRect().width) + 28, 0);
+    }
+    dirty = true;
+  }
+  attachSheet(panel.grip, panelEl, {
+    snaps: sheetSnaps,
+    get: sheetHeight,
+    set(height, settle) {
+      if (!settle) {
+        sheetDrag = height;
+        paintSheet();
+        return;
+      }
+      const snaps = sheetSnaps();
+      const nearest = snaps.reduce((best, h, i) => Math.abs(h - height) < Math.abs(snaps[best] - height) ? i : best, 0);
+      setSheet(SHEET_NAMES[nearest]);
+    }
+  });
+  var sentinel = false;
+  var ignorePops = 0;
+  function pushSentinel() {
+    if (sentinel || !isPhone())
+      return;
+    try {
+      history.pushState({ atlasPanel: true }, "", location.href);
+      sentinel = true;
+    } catch {}
+  }
+  function dropSentinel() {
+    if (!sentinel)
+      return;
+    sentinel = false;
+    ignorePops++;
+    try {
+      history.back();
+    } catch {
+      ignorePops--;
     }
   }
+  window.addEventListener("popstate", () => {
+    if (ignorePops > 0) {
+      ignorePops--;
+      return;
+    }
+    sentinel = false;
+    if (!panelOpen)
+      return;
+    if (stack.length) {
+      back();
+      pushSentinel();
+    } else
+      closePanel();
+  });
   function setPanelOpen(open) {
     panelOpen = open;
     document.body.classList.toggle("panel-open", open);
     updateInsets();
+    if (open)
+      pushSentinel();
   }
   function applyView(v, fly) {
     const st = scene.state;
@@ -2598,6 +2753,8 @@
   function go(next, opts = {}) {
     if (!panelOpen)
       setPanelOpen(true);
+    else if (isPhone() && sheetName === "peek" && next.kind !== "home")
+      setSheet("half");
     if (!sameView(view, next)) {
       const sameRoad = view.kind === "road" && next.kind === "road" && view.id === next.id;
       const bothHome = view.kind === "home" && next.kind === "home";
@@ -2621,6 +2778,7 @@
     view = { kind: "home", tab: "lands" };
     applyView(view, false);
     setPanelOpen(false);
+    dropSentinel();
   }
   var lastHit = null;
   function onHover(sx, sy) {

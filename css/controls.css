@@ -73,7 +73,7 @@ body.panel-open .zoom {
 @media (max-width: 760px) {
   .topbar {
     gap: 8px;
-    padding: env(safe-area-inset-top, 0px) 10px 0;
+    padding: env(safe-area-inset-top, 0px) max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left));
   }
 
   .topbar__title {
@@ -81,7 +81,29 @@ body.panel-open .zoom {
   }
 
   body.panel-open .zoom {
-    right: 16px;
-    bottom: calc(var(--sheet-h, 52vh) + 16px);
+    right: max(16px, env(safe-area-inset-right));
+    bottom: calc(var(--sheet-h, 52vh) + 20px);
+    transition: bottom 0.22s ease;
+  }
+
+  /* Bigger, easier thumb targets. */
+  .zoom {
+    gap: 12px;
+  }
+
+  .seal-btn {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+/* A phone held sideways: a narrow side panel instead of a bottom sheet. */
+@media (max-height: 520px) and (orientation: landscape) {
+  :root {
+    --panel-w: min(380px, 46vw);
+  }
+
+  .zoom {
+    flex-direction: row;
   }
 }

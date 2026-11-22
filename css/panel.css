@@ -54,9 +54,15 @@ body.panel-open .panel {
   line-height: 1;
 }
 
+.panel__grip {
+  display: none;
+}
+
 .panel__scroll {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 4px 22px 28px;
   overscroll-behavior: contain;
 }
@@ -373,18 +379,62 @@ button.chip:hover {
 
 @media (max-width: 760px) {
   .panel {
-    --sheet-h: 52vh;
     top: auto;
-    left: 8px;
-    right: 8px;
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
     bottom: 8px;
     width: auto;
-    height: var(--sheet-h);
+    height: var(--sheet-h, 52vh);
     padding-bottom: env(safe-area-inset-bottom);
+    transition: height 0.22s ease;
+  }
+
+  .panel.is-dragging-sheet {
+    transition: none;
+  }
+
+  /* The drag handle: pull the sheet up for reading, down to peek at the map. */
+  .panel__grip {
+    flex: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 28px;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  .panel__grip::before {
+    content: "";
+    width: 46px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--ink-soft);
+    opacity: 0.55;
+  }
+
+  .panel__bar {
+    padding-top: 0;
   }
 
   .panel__scroll {
     padding: 2px 16px 24px;
+  }
+
+  .panel__icon {
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+  }
+
+  .row {
+    min-height: 52px;
+  }
+
+  button.chip {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
   }
 }
 
@@ -408,4 +458,22 @@ button.chip:hover {
 .bridge-link__arrow {
   color: var(--wax);
   font-weight: 700;
+}
+
+.today {
+  margin: 12px 0 8px;
+  padding: 10px 12px 6px;
+  border: 1px solid var(--ink-soft);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--parch-light), var(--parch));
+  box-shadow: inset 0 0 0 3px var(--parch-light);
+}
+
+.today__label {
+  margin: 0 0 2px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--wax);
 }
