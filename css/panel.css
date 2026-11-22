@@ -396,3 +396,16 @@ button.chip:hover {
   background: var(--parch-light);
   font-size: 15px;
 }
+
+.bridge-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 0;
+}
+
+.bridge-link__arrow {
+  color: var(--wax);
+  font-weight: 700;
+}

@@ -232,6 +232,9 @@
   }
 
   // src/domain/geometry.ts
+  function distance(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
   function pointInPolygon(p, poly) {
     let inside = false;
     for (let i = 0, j = poly.length - 1;i < poly.length; j = i++) {
@@ -257,6 +260,140 @@
     return { minX, minY, maxX, maxY };
   }
 
+  // src/apps/web/bridges.ts
+  var MIN_LINKS = 2;
+  var MAX_BRIDGES = 14;
+  var MAX_PER_REALM_PAIR = 2;
+  var MAX_GULF_BRIDGES = 4;
+  var MAX_SEA_SPAN = 1000;
+  var MAX_GULF_SPAN = 520;
+  var MIN_SPAN = 40;
+  var LAND_OVERLAP = 12;
+  function bridgePoint(b, t) {
+    const u = 1 - t;
+    return {
+      x: u * u * b.p0.x + 2 * u * t * b.c.x + t * t * b.p1.x,
+      y: u * u * b.p0.y + 2 * u * t * b.c.y + t * t * b.p1.y
+    };
+  }
+  var kindFor = (count) => count >= 6 ? "stone" : count >= 3 ? "rope" : "stones";
+  function bow(id) {
+    let h = 0;
+    for (let i = 0;i < id.length; i++)
+      h = h * 31 + id.charCodeAt(i) | 0;
+    return (h & 1 ? 1 : -1) * 0.07;
+  }
+  function findSpan(ra, rb, realms) {
+    const A = ra.center;
+    const B = rb.center;
+    const len = distance(A, B);
+    const n = Math.max(2, Math.ceil(len / 6));
+    const at = (i) => ({ x: A.x + (B.x - A.x) * i / n, y: A.y + (B.y - A.y) * i / n });
+    const realmA = realms.get(ra.realmId);
+    const realmB = realms.get(rb.realmId);
+    if (ra.realmId !== rb.realmId) {
+      let i = 0;
+      while (i <= n && pointInPolygon(at(i), realmA.coast))
+        i++;
+      let j = n;
+      while (j >= 0 && pointInPolygon(at(j), realmB.coast))
+        j--;
+      if (i > j)
+        return null;
+      for (let k = i;k <= j; k++) {
+        for (const other of realms.values()) {
+          if (other !== realmA && other !== realmB && pointInPolygon(at(k), other.coast))
+            return null;
+        }
+      }
+      return { p0: at(i), p1: at(j), sea: true };
+    }
+    let i = 0;
+    while (i <= n && pointInPolygon(at(i), realmA.coast))
+      i++;
+    if (i > n)
+      return null;
+    let k = i;
+    while (k <= n && !pointInPolygon(at(k), realmA.coast))
+      k++;
+    if (k > n)
+      return null;
+    return { p0: at(i), p1: at(k), sea: false };
+  }
+  function computeBridges(notes, regions, realms) {
+    const groups = new Map;
+    for (const note of notes.values()) {
+      for (const target of note.links) {
+        const other = notes.get(target);
+        if (!other || other.regionId === note.regionId)
+          continue;
+        const [a, b] = [note.regionId, other.regionId].sort();
+        const id = `${a}|${b}`;
+        const g = groups.get(id) ?? { a, b, links: [] };
+        g.links.push({ from: note.id, to: other.id });
+        groups.set(id, g);
+      }
+    }
+    const candidates = [];
+    for (const [id, g] of groups) {
+      if (g.links.length < MIN_LINKS)
+        continue;
+      const ra = regions.get(g.a);
+      const rb = regions.get(g.b);
+      if (!ra || !rb)
+        continue;
+      const span = findSpan(ra, rb, realms);
+      if (!span)
+        continue;
+      const spanLen = distance(span.p0, span.p1);
+      if (spanLen < MIN_SPAN || spanLen > (span.sea ? MAX_SEA_SPAN : MAX_GULF_SPAN))
+        continue;
+      const dx = (span.p1.x - span.p0.x) / spanLen;
+      const dy = (span.p1.y - span.p0.y) / spanLen;
+      const p0 = { x: span.p0.x - dx * LAND_OVERLAP, y: span.p0.y - dy * LAND_OVERLAP };
+      const p1 = { x: span.p1.x + dx * LAND_OVERLAP, y: span.p1.y + dy * LAND_OVERLAP };
+      const length = spanLen + LAND_OVERLAP * 2;
+      const k = bow(id) * length;
+      const c = { x: (p0.x + p1.x) / 2 - dy * k, y: (p0.y + p1.y) / 2 + dx * k };
+      candidates.push({
+        id,
+        a: g.a,
+        b: g.b,
+        count: g.links.length,
+        links: g.links,
+        crossRealm: ra.realmId !== rb.realmId,
+        p0,
+        p1,
+        c,
+        length,
+        kind: kindFor(g.links.length)
+      });
+    }
+    candidates.sort((x, y) => y.count - x.count || x.length - y.length);
+    const chosen = [];
+    const perPair = new Map;
+    let gulfs = 0;
+    for (const cand of candidates) {
+      if (chosen.length >= MAX_BRIDGES)
+        break;
+      const mid = bridgePoint(cand, 0.5);
+      if (chosen.some((o) => distance(bridgePoint(o, 0.5), mid) < 130))
+        continue;
+      if (cand.crossRealm) {
+        const key = [regions.get(cand.a).realmId, regions.get(cand.b).realmId].sort().join("|");
+        if ((perPair.get(key) ?? 0) >= MAX_PER_REALM_PAIR)
+          continue;
+        perPair.set(key, (perPair.get(key) ?? 0) + 1);
+      } else {
+        if (gulfs >= MAX_GULF_BRIDGES)
+          continue;
+        gulfs++;
+      }
+      chosen.push(cand);
+    }
+    return chosen;
+  }
+
   // src/apps/web/model.ts
   class AtlasModel {
     atlas;
@@ -268,6 +405,8 @@
     roadsByNote = new Map;
     regionBridges = new Map;
     lanes = [];
+    bridges;
+    bridgesById = new Map;
     stems;
     constructor(atlas) {
       this.atlas = atlas;
@@ -307,6 +446,9 @@
         const [a, b] = key.split("|");
         this.lanes.push({ a, b, count });
       }
+      this.bridges = computeBridges(this.notes, this.regions, this.realms);
+      for (const b of this.bridges)
+        this.bridgesById.set(b.id, b);
     }
     bridge(a, b) {
       for (const [x, y] of [[a, b], [b, a]]) {
@@ -383,6 +525,155 @@
       h = Math.imul(h, 16777619);
     }
     return (h >>> 0) % 1e4 / 1e4;
+  }
+
+  // src/apps/web/render/bridgeArt.ts
+  function sample(b, count) {
+    const pts = Array.from({ length: count + 1 }, (_, i) => bridgePoint(b, i / count));
+    return pts.map((p, i) => {
+      const a = pts[Math.max(0, i - 1)];
+      const c = pts[Math.min(count, i + 1)];
+      const len = Math.hypot(c.x - a.x, c.y - a.y) || 1;
+      const tx = (c.x - a.x) / len;
+      const ty = (c.y - a.y) / len;
+      return { x: p.x, y: p.y, tx, ty, nx: -ty, ny: tx };
+    });
+  }
+  function pathThrough(points) {
+    const path = new Path2D;
+    points.forEach((p, i) => i === 0 ? path.moveTo(p.x, p.y) : path.lineTo(p.x, p.y));
+    return path;
+  }
+  function drawBridge(ctx, b, m, emphasis) {
+    const steps = Math.max(8, Math.round(b.length / 10));
+    const pts = sample(b, steps);
+    const path = pathThrough(pts);
+    ctx.save();
+    ctx.lineCap = "butt";
+    ctx.lineJoin = "round";
+    if (emphasis !== "none") {
+      ctx.strokeStyle = theme.gold;
+      ctx.globalAlpha = emphasis === "selected" ? 0.55 : 0.35;
+      ctx.lineWidth = 30 * m;
+      ctx.lineCap = "round";
+      ctx.stroke(path);
+      ctx.globalAlpha = 1;
+      ctx.lineCap = "butt";
+    }
+    if (b.kind === "stone") {
+      ctx.save();
+      ctx.translate(3 * m, 5 * m);
+      ctx.strokeStyle = "rgba(40, 25, 8, 0.24)";
+      ctx.lineWidth = 17 * m;
+      ctx.stroke(path);
+      ctx.restore();
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 1.4;
+      for (let i = 2;i < pts.length - 1; i += 3) {
+        const p = pts[i];
+        const cx = p.x + p.nx * 9 * m;
+        const cy = p.y + p.ny * 9 * m;
+        const start = Math.atan2(p.ny, p.nx) - Math.PI / 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 7 * m, start, start + Math.PI);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 15 * m;
+      ctx.stroke(path);
+      ctx.strokeStyle = theme.land;
+      ctx.lineWidth = 10.5 * m;
+      ctx.stroke(path);
+      ctx.strokeStyle = theme.inkSoft;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      for (let i = 1;i < pts.length - 1; i += 2) {
+        const p = pts[i];
+        ctx.moveTo(p.x - p.nx * 4.5 * m, p.y - p.ny * 4.5 * m);
+        ctx.lineTo(p.x + p.nx * 4.5 * m, p.y + p.ny * 4.5 * m);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = theme.ink;
+      for (const p of [pts[0], pts[pts.length - 1]]) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5.5 * m, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (b.kind === "rope") {
+      ctx.save();
+      ctx.translate(2.5 * m, 4.5 * m);
+      ctx.strokeStyle = "rgba(40, 25, 8, 0.2)";
+      ctx.lineWidth = 9 * m;
+      ctx.stroke(path);
+      ctx.restore();
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 8 * m;
+      ctx.stroke(path);
+      ctx.strokeStyle = "#d9bf86";
+      ctx.lineWidth = 5.5 * m;
+      ctx.stroke(path);
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (let i = 1;i < pts.length - 1; i++) {
+        const p = pts[i];
+        ctx.moveTo(p.x - p.nx * 5 * m, p.y - p.ny * 5 * m);
+        ctx.lineTo(p.x + p.nx * 5 * m, p.y + p.ny * 5 * m);
+      }
+      ctx.stroke();
+      ctx.lineWidth = 0.9;
+      ctx.globalAlpha = 0.7;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const x = p.x + side * p.nx * 6.5 * m;
+          const y = p.y + side * p.ny * 6.5 * m;
+          if (i === 0)
+            ctx.moveTo(x, y);
+          else
+            ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = theme.ink;
+      for (let i = 0;i < pts.length; i += 6) {
+        const p = pts[i];
+        for (const side of [-1, 1]) {
+          ctx.beginPath();
+          ctx.arc(p.x + side * p.nx * 6.5 * m, p.y + side * p.ny * 6.5 * m, 2.4 * m, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      for (const p of [pts[0], pts[pts.length - 1]]) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4.5 * m, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      ctx.strokeStyle = theme.ink;
+      ctx.lineWidth = 1.5;
+      for (let i = 1;i < pts.length - 1; i += 2) {
+        const p = pts[i];
+        const wobble = 0.8 + 0.4 * (i * 7919 % 10) / 10;
+        ctx.save();
+        ctx.translate(p.x + p.nx * (i % 3 - 1) * 2 * m, p.y + p.ny * (i % 3 - 1) * 2 * m);
+        ctx.rotate(Math.atan2(p.ty, p.tx));
+        ctx.fillStyle = "rgba(40, 25, 8, 0.2)";
+        ctx.beginPath();
+        ctx.ellipse(2 * m, 3 * m, 6.5 * m * wobble, 4.4 * m, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = theme.land;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 6.5 * m * wobble, 4.4 * m, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
   }
 
   // src/apps/web/render/glyphs.ts
@@ -749,9 +1040,18 @@
     selectedRealm: null,
     road: null,
     frontier: null,
-    hoverFrontier: null
+    hoverFrontier: null,
+    selectedBridge: null,
+    hoverBridge: null
   });
   var clamp2 = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  function distanceToSegment(px, py, a, b) {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const lengthSq = dx * dx + dy * dy;
+    const t = lengthSq === 0 ? 0 : clamp2(((px - a[0]) * dx + (py - a[1]) * dy) / lengthSq, 0, 1);
+    return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy));
+  }
   function pathOf(points) {
     const p = new Path2D;
     points.forEach((pt, i) => i === 0 ? p.moveTo(pt.x, pt.y) : p.lineTo(pt.x, pt.y));
@@ -828,6 +1128,9 @@
       }
       if (best)
         return { kind: "note", id: best.id };
+      const bridge = this.bridgeAt(sx, sy);
+      if (bridge)
+        return { kind: "bridge", id: bridge };
       const [wx, wy] = cam.toWorld(sx, sy);
       const p = { x: wx, y: wy };
       if (L.seal > 0.4) {
@@ -841,6 +1144,33 @@
           return { kind: "realm", id: realm.id };
       }
       return null;
+    }
+    bridgeThickness() {
+      return clamp2(0.55 / this.camera.s, 1, 2.2);
+    }
+    bridgeAt(sx, sy) {
+      const cam = this.camera;
+      let best = null;
+      let bestD = 12 + this.bridgeThickness() * 3;
+      for (const b of this.model.bridges) {
+        const [mx, my] = cam.toScreen(...Object.values(bridgePoint(b, 0.5)));
+        if (Math.hypot(mx - sx, my - sy) <= 15)
+          return b.id;
+        let prev = null;
+        for (let i = 0;i <= 24; i++) {
+          const p = bridgePoint(b, i / 24);
+          const cur = cam.toScreen(p.x, p.y);
+          if (prev) {
+            const d = distanceToSegment(sx, sy, prev, cur);
+            if (d < bestD) {
+              bestD = d;
+              best = b.id;
+            }
+          }
+          prev = cur;
+        }
+      }
+      return best;
     }
     draw() {
       const { ctx, camera: cam, model } = this;
@@ -890,6 +1220,7 @@
       this.drawIslets();
       for (const realm of atlas.realms)
         this.drawRealmLand(realm, L.glyph, visible);
+      this.drawBridges(visible);
       this.drawFog();
       const { cartouche: c, compass } = atlas.furniture;
       drawCompass(ctx, compass.x, compass.y, compass.r);
@@ -913,6 +1244,7 @@
       this.drawDots(0.55 + 0.45 * smooth(0.2, 0.5, s));
       this.drawRealmLabels(L.realmLabel);
       this.drawSeals(L);
+      this.drawBridgeBadges();
       this.drawNoteLabels(L.noteLabel);
       this.drawFrontiers(L);
     }
@@ -1114,6 +1446,46 @@
         }
       }
       ctx.globalAlpha = 1;
+    }
+    drawBridges(visible) {
+      const { ctx, model, state } = this;
+      const m = this.bridgeThickness();
+      for (const b of model.bridges) {
+        const mid = bridgePoint(b, 0.5);
+        if (!visible(mid.x, mid.y, b.length))
+          continue;
+        const emphasis = state.selectedBridge === b.id ? "selected" : state.hoverBridge === b.id ? "hover" : "none";
+        drawBridge(ctx, b, m, emphasis);
+      }
+    }
+    drawBridgeBadges() {
+      const { ctx, camera: cam, model, state } = this;
+      for (const b of model.bridges) {
+        const mid = bridgePoint(b, 0.5);
+        const [x, y] = cam.toScreen(mid.x, mid.y);
+        if (x < -30 || y < -30 || x > cam.width + 30 || y > cam.height + 30)
+          continue;
+        const hot = state.selectedBridge === b.id || state.hoverBridge === b.id;
+        const r = hot ? 12 : 10.5;
+        ctx.save();
+        ctx.shadowColor = "rgba(40, 25, 8, 0.4)";
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetY = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = theme.paperLight;
+        ctx.fill();
+        ctx.shadowColor = "transparent";
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = hot ? theme.gold : theme.ink;
+        ctx.stroke();
+        ctx.fillStyle = theme.ink;
+        ctx.font = `700 ${r * 1.05}px ${theme.display}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(b.count), x, y + 0.5);
+        ctx.restore();
+      }
     }
     drawFog() {
       const { ctx, model } = this;
@@ -1720,6 +2092,7 @@
         case "region":
         case "realm":
         case "frontier":
+        case "bridge":
           this.handlers.go({ kind: act, id });
           break;
         case "road":
@@ -1752,6 +2125,8 @@
           return this.renderRoad(view.id, view.step);
         case "frontier":
           return this.renderFrontier(view.id);
+        case "bridge":
+          return this.renderBridge(view.id);
       }
     }
     setBar(crumb) {
@@ -1842,6 +2217,29 @@
       }
       this.scroll.scrollTop = 0;
     }
+    renderBridge(id) {
+      const bridge = this.model.bridgesById.get(id);
+      if (!bridge)
+        return this.renderMissing();
+      const a = this.model.regions.get(bridge.a);
+      const b = this.model.regions.get(bridge.b);
+      this.setBar("Bridge");
+      const style = { stone: "A stone bridge: a strong, well-worn tie.", rope: "A plank-and-rope bridge: a steady tie.", stones: "Stepping stones: a light tie." }[bridge.kind];
+      this.put(h("h2", null, `${a.name} ↔ ${b.name}`), h("p", { class: "lede" }, `${style} ${plural(bridge.count, "note link")} cross here, each one a place where the notes on one shore lean on the other.`), this.list([this.regionRow(a), this.regionRow(b)]), h("h3", null, `The links (${bridge.count})`), h("div", null, ...bridge.links.map(({ from, to }) => {
+        const f = this.model.notes.get(from);
+        const t = this.model.notes.get(to);
+        const chip = (n) => h("button", { class: "chip", type: "button", "data-act": "note", "data-id": n.id }, n.title);
+        return h("div", { class: "bridge-link" }, chip(f), h("span", { class: "bridge-link__arrow", "aria-hidden": "true" }, "→"), chip(t));
+      })));
+      const bridges = this.model.bridges.filter((br) => br.a === id || br.b === id);
+      if (bridges.length) {
+        this.put(h("h3", null, "Bridges"), this.list(bridges.map((br) => {
+          const other = this.model.regions.get(br.a === id ? br.b : br.a);
+          return this.row("bridge", br.id, `To ${other.name}`, `${plural(br.count, "link")} cross this bridge`, "\uD83C\uDF09");
+        })));
+      }
+      this.scroll.scrollTop = 0;
+    }
     renderRealm(id) {
       const realm = this.model.realms.get(id);
       if (!realm)
@@ -1891,6 +2289,34 @@
       this.setBar("Atlas");
       this.put(h("h2", null, "Off the map"), h("p", null, "That place is not on this chart."));
     }
+  }
+
+  // src/apps/web/ui/refresh.ts
+  async function refreshApp(button) {
+    button?.classList.add("is-spinning");
+    button?.setAttribute("disabled", "");
+    const attempt = async (work) => {
+      try {
+        await work();
+      } catch {}
+    };
+    await attempt(async () => {
+      const regs = await navigator.serviceWorker?.getRegistrations() ?? [];
+      await Promise.all(regs.map((r) => r.update()));
+    });
+    await attempt(async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    });
+    await attempt(async () => {
+      const urls = new Set(["./", "main.js", "atlas-data.js", "sw.js", "manifest.webmanifest"]);
+      document.querySelectorAll('link[rel="stylesheet"][href]').forEach((l) => {
+        if (new URL(l.href).origin === location.origin)
+          urls.add(l.getAttribute("href"));
+      });
+      await Promise.all([...urls].map((u) => fetch(u, { cache: "reload" })));
+    });
+    location.reload();
   }
 
   // src/apps/web/ui/search.ts
@@ -2027,7 +2453,7 @@
     }
   }
   function hashToView(hash) {
-    const m = /^#(note|region|realm|frontier|road)\/([^/]+)(?:\/(-?\d+))?$/.exec(hash);
+    const m = /^#(note|region|realm|frontier|road|bridge)\/([^/]+)(?:\/(-?\d+))?$/.exec(hash);
     if (!m)
       return null;
     const id = decodeURIComponent(m[2]);
@@ -2083,6 +2509,7 @@
     st.selectedRegion = v.kind === "region" ? v.id : null;
     st.selectedRealm = v.kind === "realm" ? v.id : null;
     st.frontier = v.kind === "frontier" ? v.id : null;
+    st.selectedBridge = v.kind === "bridge" ? v.id : null;
     st.road = v.kind === "road" ? { id: v.id, step: v.step } : null;
     panel.render(v);
     try {
@@ -2115,6 +2542,18 @@
         const f = model.frontiers.get(v.id);
         if (f)
           camera.flyTo({ x: f.x, y: f.y, s: Math.max(camera.s, 0.55) });
+        break;
+      }
+      case "bridge": {
+        const b = model.bridgesById.get(v.id);
+        if (!b)
+          break;
+        camera.fitBounds({
+          minX: Math.min(b.p0.x, b.p1.x, b.c.x),
+          maxX: Math.max(b.p0.x, b.p1.x, b.c.x),
+          minY: Math.min(b.p0.y, b.p1.y, b.c.y),
+          maxY: Math.max(b.p0.y, b.p1.y, b.c.y)
+        }, 140, 900, 1.1);
         break;
       }
       case "road": {
@@ -2177,6 +2616,7 @@
       st.hoverNote = hit?.kind === "note" ? hit.id : null;
       st.hoverRegion = hit?.kind === "seal" || hit?.kind === "region" ? hit.id : null;
       st.hoverFrontier = hit?.kind === "frontier" ? hit.id : null;
+      st.hoverBridge = hit?.kind === "bridge" ? hit.id : null;
       canvas.classList.toggle("is-pointing", hit !== null);
       dirty = true;
     }
@@ -2208,6 +2648,11 @@
       }
       case "frontier":
         return { title: model.frontiers.get(hit.id).title, sub: "Unmapped waters" };
+      case "bridge": {
+        const b = model.bridgesById.get(hit.id);
+        const n = (id) => model.regions.get(id).name;
+        return { title: `${n(b.a)} ↔ ${n(b.b)}`, sub: `Bridge · ${b.count} links cross here` };
+      }
     }
   }
   function onTap(sx, sy) {
@@ -2223,6 +2668,8 @@
       go({ kind: "region", id: hit.id });
     else if (hit.kind === "realm")
       go({ kind: "realm", id: hit.id });
+    else if (hit.kind === "bridge")
+      go({ kind: "bridge", id: hit.id });
     else
       go({ kind: "frontier", id: hit.id });
   }
@@ -2233,6 +2680,7 @@
   });
   document.getElementById("zoom-in").addEventListener("click", () => camera.zoomCentre(1.6));
   document.getElementById("zoom-out").addEventListener("click", () => camera.zoomCentre(1 / 1.6));
+  document.getElementById("refresh").addEventListener("click", (e) => void refreshApp(e.currentTarget));
   document.getElementById("zoom-home").addEventListener("click", () => camera.flyTo(camera.homeView(), 900));
   document.getElementById("menu").addEventListener("click", () => panelOpen ? closePanel() : go({ kind: "home", tab: "lands" }, { fly: false }));
   var searchInput = document.getElementById("search");

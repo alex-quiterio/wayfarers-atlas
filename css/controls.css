@@ -45,6 +45,16 @@
   transform: translateY(1px);
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.seal-btn.is-spinning {
+  animation: spin 0.9s linear infinite;
+}
+
 .zoom {
   position: fixed;
   right: 16px;

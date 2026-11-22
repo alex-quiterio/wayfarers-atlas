@@ -1,6 +1,8 @@
 .search {
   position: relative;
   flex: 1;
+  /* Let the box shrink below the input's intrinsic width, so the buttons beside it stay on screen. */
+  min-width: 0;
   max-width: 460px;
 }
 
