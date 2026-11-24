@@ -14,9 +14,12 @@
     <link rel="icon" type="image/png" href="icons/icon-192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Fonts load without blocking the first paint; the map redraws when they arrive. -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English:ital@0;1&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap"
       rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English:ital@0;1&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap"
+      media="print"
+      onload="this.media='all'"
     />
     <script>
       /* Set the mode before first paint, so there is no flash. Night is the default. */
@@ -60,7 +63,7 @@
     <aside id="panel" class="panel" aria-live="polite"></aside>
 
     <noscript>This map needs JavaScript.</noscript>
-    <script src="atlas-data.js"></script>
-    <script src="main.js"></script>
+    <script defer src="atlas-data.js"></script>
+    <script defer src="main.js"></script>
   </body>
 </html>
