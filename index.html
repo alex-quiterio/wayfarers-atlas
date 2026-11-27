@@ -47,10 +47,13 @@
         <input id="search" type="search" placeholder="Search notes, people, lands…" autocomplete="off" />
         <ul id="results" class="search__results" hidden></ul>
       </div>
+      <button id="filter" class="seal-btn" type="button" data-icon="filter" aria-haspopup="true" aria-expanded="false" aria-controls="filter-menu" aria-label="Choose what the map shows" title="Choose what the map shows"></button>
       <button id="theme" class="seal-btn" type="button" data-icon="sun" aria-label="Switch between night and day" title="Switch between night and day"></button>
       <button id="refresh" class="seal-btn" type="button" data-icon="refresh" aria-label="Refresh to the latest atlas" title="Refresh to the latest atlas"></button>
       <button id="install" class="seal-btn" type="button" data-icon="install" hidden aria-label="Install as an app" title="Install as an app"></button>
     </header>
+
+    <div id="filter-menu" class="filter" hidden></div>
 
     <div id="tooltip" class="tooltip" hidden></div>
 
